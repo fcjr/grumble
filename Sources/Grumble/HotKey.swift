@@ -36,12 +36,13 @@ struct HotKey: Equatable {
     }
 
     var displayString: String {
-        var result = ""
-        if carbonModifiers & UInt32(controlKey) != 0 { result += "\u{2303}" }
-        if carbonModifiers & UInt32(optionKey) != 0 { result += "\u{2325}" }
-        if carbonModifiers & UInt32(shiftKey) != 0 { result += "\u{21E7}" }
-        if carbonModifiers & UInt32(cmdKey) != 0 { result += "\u{2318}" }
-        return result + keyName
+        var parts: [String] = []
+        if carbonModifiers & UInt32(controlKey) != 0 { parts.append("\u{2303}") }
+        if carbonModifiers & UInt32(optionKey) != 0 { parts.append("\u{2325}") }
+        if carbonModifiers & UInt32(shiftKey) != 0 { parts.append("\u{21E7}") }
+        if carbonModifiers & UInt32(cmdKey) != 0 { parts.append("\u{2318}") }
+        parts.append(keyName)
+        return parts.joined(separator: "+")
     }
 
     private var keyName: String {

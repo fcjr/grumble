@@ -1,14 +1,14 @@
 # Grumble
 
-Local, on-device dictation for macOS. Press **⌥Space**, talk, and watch your
-words stream live into whatever text field has focus. Press **⌥Space** again to
+Local, on-device dictation for macOS. Press **⌥+Space**, talk, and watch your
+words stream live into whatever text field has focus. Press **⌥+Space** again to
 stop. All transcription happens on-device via
 [FluidAudio](https://github.com/FluidInference/FluidAudio) and NVIDIA's
 Parakeet models running on CoreML — no audio ever leaves your Mac.
 
 ## How it works
 
-- A menu bar app (no Dock icon) registers a global ⌥Space hotkey
+- A menu bar app (no Dock icon) registers a global ⌥+Space hotkey
   (customizable via menu bar icon → Change Hotkey…).
 - While listening, microphone audio is fed to FluidAudio's streaming ASR
   engine (Parakeet Unified 0.6B by default — a true streaming variant of the
