@@ -1,0 +1,5 @@
+Grumble.xcodeproj/
+Resources/Info.plist
+build/
+DerivedData/
+.DS_Store

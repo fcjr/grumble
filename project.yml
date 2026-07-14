@@ -1,0 +1,47 @@
+name: Grumble
+options:
+  bundleIdPrefix: com.leftshift
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    from: "0.15.0"
+
+schemes:
+  Grumble:
+    build:
+      targets:
+        Grumble: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: KNBPD99JQM
+
+targets:
+  Grumble:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/Grumble
+    dependencies:
+      - package: FluidAudio
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Grumble
+        CFBundleShortVersionString: "0.1.0"
+        LSMinimumSystemVersion: "14.0"
+        LSUIElement: true
+        NSMicrophoneUsageDescription: Grumble listens to your microphone to transcribe your speech into text.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.leftshift.grumble
