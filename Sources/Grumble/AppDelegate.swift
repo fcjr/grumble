@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictation.onStateChange = { [weak self] state in
             self?.updateUI(for: state)
         }
+        dictation.onLevel = { [weak self] level in
+            self?.overlay.setLevel(level)
+        }
         updateUI(for: .idle)
 
         hotKey.onHotKey = { [weak self] in
@@ -87,39 +90,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateUI(for state: DictationController.State) {
         lastState = state
-        let symbol: String
         let tint: NSColor?
         switch state {
         case .idle:
             stateItem.title = "Idle"
             toggleItem.title = "Start Dictation  (\(currentHotKey.displayString))"
             toggleItem.isEnabled = true
-            symbol = "mic"
             tint = nil
             overlay.hide()
         case .loadingModel:
             stateItem.title = "Loading model\u{2026}"
             toggleItem.isEnabled = false
-            symbol = "arrow.down.circle"
-            tint = nil
+            tint = .tertiaryLabelColor
             overlay.hide()
         case .listening:
             stateItem.title = "Listening\u{2026}"
             toggleItem.title = "Stop Dictation  (\(currentHotKey.displayString))"
             toggleItem.isEnabled = true
-            symbol = "mic.fill"
             tint = .grumbleNeedle
-            overlay.show("Listening\u{2026}", color: .grumbleNeedle, pulsing: true)
+            overlay.show("Listening", color: .grumbleNeedle, pulsing: true)
         case .finishing:
             stateItem.title = "Finishing\u{2026}"
             toggleItem.isEnabled = false
-            symbol = "mic.fill"
-            tint = nil
-            overlay.show("Finishing\u{2026}", color: .grumbleAmber, pulsing: false)
+            tint = .grumbleAmber
+            overlay.show("Finishing", color: .grumbleAmber, pulsing: false)
         }
         if let button = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: symbol, accessibilityDescription: "Grumble")
+            button.image = .grumbleMenuBarMark
             button.contentTintColor = tint
         }
     }

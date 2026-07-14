@@ -17,22 +17,28 @@ final class HotKeyRecorder {
         self.completion = completion
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 110),
-            styleMask: [.titled],
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 120),
+            styleMask: [.titled, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Grumble"
         window.level = .floating
         window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.backgroundColor = .grumbleFaceplate
+        window.isMovableByWindowBackground = true
 
-        let title = NSTextField(labelWithString: "Press the new hotkey")
-        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        let title = NSTextField(labelWithString: "")
+        title.attributedStringValue = .grumblePanelLabel(
+            "Press the new hotkey", size: 15, color: .grumbleAmber)
         title.alignment = .center
         let hint = NSTextField(
             labelWithString: "Must include \u{2318}, \u{2303}, or \u{2325} \u{2014} Esc to cancel")
         hint.font = .systemFont(ofSize: 12)
-        hint.textColor = .secondaryLabelColor
+        hint.textColor = .grumbleBoneDim
         hint.alignment = .center
 
         let stack = NSStackView(views: [title, hint])

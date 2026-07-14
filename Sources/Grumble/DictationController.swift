@@ -15,6 +15,7 @@ final class DictationController {
         didSet { onStateChange?(state) }
     }
     var onStateChange: ((State) -> Void)?
+    var onLevel: ((Float) -> Void)?
 
     private let audio = AudioCapture()
     private let injector = TextInjector()
@@ -92,9 +93,14 @@ final class DictationController {
                     }
                 }
             }
-            try audio.start { buffer in
-                continuation.yield(buffer)
-            }
+            try audio.start(
+                onBuffer: { buffer in
+                    continuation.yield(buffer)
+                },
+                onLevel: { [weak self] level in
+                    Task { @MainActor in self?.onLevel?(level) }
+                }
+            )
             state = .listening
         } catch {
             state = .idle
