@@ -108,14 +108,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleItem.title = "Stop Dictation  (\(currentHotKey.displayString))"
             toggleItem.isEnabled = true
             symbol = "mic.fill"
-            tint = .systemRed
-            overlay.show("Listening\u{2026}", color: .systemRed, pulsing: true)
+            tint = .grumbleNeedle
+            overlay.show("Listening\u{2026}", color: .grumbleNeedle, pulsing: true)
         case .finishing:
             stateItem.title = "Finishing\u{2026}"
             toggleItem.isEnabled = false
             symbol = "mic.fill"
             tint = nil
-            overlay.show("Finishing\u{2026}", color: .systemOrange, pulsing: false)
+            overlay.show("Finishing\u{2026}", color: .grumbleAmber, pulsing: false)
         }
         if let button = statusItem.button {
             button.image = NSImage(

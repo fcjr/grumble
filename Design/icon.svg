@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="faceplate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#241E18"/>
+      <stop offset="1" stop-color="#181310"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFC873"/>
+      <stop offset="1" stop-color="#E09A2F"/>
+    </linearGradient>
+    <filter id="dropshadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- faceplate squircle -->
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#faceplate)" filter="url(#dropshadow)"/>
+  <rect x="102.5" y="102.5" width="819" height="819" rx="184" fill="none" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="5"/>
+
+  <!-- the grumble: loud irregular wave -->
+  <path d="M280,412 q38.5,-100 77,0 q38.5,90 77,0 q38.5,-110 77,0 q38.5,100 77,0 q38.5,-80 77,0 q38.5,80 77,0"
+        fill="none" stroke="url(#amber)" stroke-width="46" stroke-linecap="round"/>
+
+  <!-- settling: quieter wave -->
+  <path d="M280,542 q38.5,-52 77,0 q38.5,48 77,0 q38.5,-56 77,0 q38.5,44 77,0"
+        fill="none" stroke="#B98430" stroke-width="46" stroke-linecap="round"/>
+
+  <!-- the sentence: flat line, full stop -->
+  <path d="M280,656 L616,656"
+        fill="none" stroke="#EFE6D6" stroke-width="46" stroke-linecap="round"/>
+  <circle cx="692" cy="656" r="27" fill="#D4553A"/>
+</svg>
