@@ -1,15 +1,17 @@
 import AppKit
 import ApplicationServices
 import FluidAudio
+import ServiceManagement
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let hotKey = HotKeyManager()
     private let dictation = DictationController()
 
     private var stateItem: NSMenuItem!
     private var toggleItem: NSMenuItem!
+    private var loginItem: NSMenuItem!
     private var modelMenu: NSMenu!
     private lazy var overlay = OverlayController()
     private let hotKeyRecorder = HotKeyRecorder()
@@ -45,8 +47,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictation.preload()
     }
 
+    func menuWillOpen(_ menu: NSMenu) {
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    }
+
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = self
 
         stateItem = NSMenuItem(title: "Idle", action: nil, keyEquivalent: "")
         stateItem.isEnabled = false
@@ -78,6 +85,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             title: "Change Hotkey\u{2026}", action: #selector(changeHotKey), keyEquivalent: "")
         hotKeyItem.target = self
         menu.addItem(hotKeyItem)
+
+        loginItem = NSMenuItem(
+            title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        loginItem.target = self
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(loginItem)
 
         menu.addItem(.separator())
 
@@ -130,6 +143,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleDictation() {
         dictation.toggle()
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSLog("Grumble: failed to toggle launch at login: \(error)")
+        }
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
     @objc private func changeHotKey() {
