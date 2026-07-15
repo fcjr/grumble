@@ -16,6 +16,7 @@ final class DictationController {
     }
     var onStateChange: ((State) -> Void)?
     var onLevel: ((Float) -> Void)?
+    var onPermissionsNeeded: (() -> Void)?
 
     private let audio = AudioCapture()
     private let injector = TextInjector()
@@ -63,10 +64,8 @@ final class DictationController {
     private func start() async {
         guard state == .idle else { return }
 
-        guard await AVCaptureDevice.requestAccess(for: .audio) else {
-            showAlert(
-                "Grumble needs microphone access. Enable it in System Settings > Privacy & Security > Microphone."
-            )
+        guard PermissionsController.allGranted() else {
+            onPermissionsNeeded?()
             return
         }
 

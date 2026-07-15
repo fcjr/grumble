@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var loginItem: NSMenuItem!
     private var modelMenu: NSMenu!
     private lazy var overlay = OverlayController()
+    private let permissions = PermissionsController()
     private let hotKeyRecorder = HotKeyRecorder()
     private var currentHotKey = HotKey.load()
     private var lastState: DictationController.State = .idle
@@ -43,7 +44,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         hotKey.register(currentHotKey)
 
-        promptForAccessibilityIfNeeded()
+        dictation.onPermissionsNeeded = { [weak self] in
+            self?.permissions.show()
+        }
+        if CommandLine.arguments.contains("--setup") {
+            permissions.show()
+        } else {
+            permissions.showIfNeeded()
+        }
         dictation.preload()
     }
 
@@ -184,13 +192,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         dictation.preload()
     }
 
-    private func promptForAccessibilityIfNeeded() {
-        let options =
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        if !AXIsProcessTrustedWithOptions(options) {
-            NSLog(
-                "Grumble: accessibility access not granted yet; text injection will not work until it is enabled."
-            )
-        }
-    }
 }
