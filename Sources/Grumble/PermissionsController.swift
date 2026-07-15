@@ -65,7 +65,7 @@ final class PermissionsController {
 
         axRow = PermissionRow(
             title: "Accessibility",
-            detail: "So Grumble can type into other apps."
+            detail: "So Grumble can type into other apps. Not listed? Add it with +."
         ) { [weak self] in self?.axAction() }
 
         let footer = NSTextField(
@@ -166,13 +166,6 @@ final class PermissionsController {
     }
 
     private func axAction() {
-        if !AXIsProcessTrusted() {
-            // Prompting also registers Grumble in the Accessibility list so
-            // the user only has to flip the toggle.
-            let options =
-                [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            AXIsProcessTrustedWithOptions(options)
-        }
         openSettings(
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
     }
