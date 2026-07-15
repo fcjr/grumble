@@ -3,3 +3,9 @@ Resources/Info.plist
 build/
 DerivedData/
 .DS_Store
+node_modules/
+dist/
+.wrangler/
+.env
+*.tsbuildinfo
+apps/web/src/routeTree.gen.ts
