@@ -107,6 +107,7 @@ pkg: generate
     codesign --force --options runtime --timestamp --sign "{{ sign_identity }}" \
         "build/pkg/dmg/Grumble.app/Contents/Frameworks/Sparkle.framework"
     codesign --force --options runtime --timestamp \
+        --entitlements Resources/Grumble.entitlements \
         --sign "{{ sign_identity }}" build/pkg/dmg/Grumble.app
     codesign --verify --strict --deep build/pkg/dmg/Grumble.app
     rm -f build/Grumble.dmg
