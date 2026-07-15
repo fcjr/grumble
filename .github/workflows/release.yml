@@ -89,8 +89,11 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cp build/Grumble.dmg "build/Grumble-$VERSION.dmg"
+          # The unversioned DMG gives the website a stable
+          # releases/latest/download/Grumble.dmg URL.
           gh release create "$GITHUB_REF_NAME" \
             "build/Grumble-$VERSION.dmg" \
+            "build/Grumble.dmg" \
             "build/updates/Grumble-$VERSION.zip" \
             --title "Grumble $VERSION" \
             --generate-notes

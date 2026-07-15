@@ -6,7 +6,8 @@ export const Route = createFileRoute("/")({
   component: Landing,
 });
 
-const RELEASES = "https://github.com/fcjr/grumble/releases/latest";
+const DOWNLOAD =
+  "https://github.com/fcjr/grumble/releases/latest/download/Grumble.dmg";
 const REPO = "https://github.com/fcjr/grumble";
 
 function Landing() {
@@ -43,7 +44,8 @@ function Landing() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <a
-                href={RELEASES}
+                href={DOWNLOAD}
+                download
                 className="panel-label rounded-xl bg-amber px-6 py-3 text-lg text-faceplate-deep transition-colors hover:bg-amber-hi focus-visible:bg-amber-hi"
               >
                 Download for macOS
