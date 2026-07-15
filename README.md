@@ -91,15 +91,18 @@ Sparkle update zip to a GitHub release, publishes the Homebrew cask to
 signed appcast at `grumble.computer/desktop/darwin/appcast.xml`, commits it
 together with the flake's `nix/version.json` pin, and redeploys the site.
 
-The same tag also builds the Mac App Store variant (`GrumbleAppStore`
-target: sandboxed, no Sparkle — the store owns updates) and uploads it to
-App Store Connect. Signing is cloud-managed: the export re-signs the archive
-with an Apple Distribution certificate and provisioning profile created on
-demand through the App Store Connect API key, which therefore needs the App
-Manager role. The upload only delivers the build; attach it to a version and
-submit for review in App Store Connect. To upload from a local machine
-instead: `APP_STORE_CONNECT_KEY_FILE=/path/to/AuthKey.p8
-APP_STORE_CONNECT_KEY_ID=… APP_STORE_CONNECT_ISSUER_ID=… just appstore`.
+The same tag also releases to the Mac App Store, end to end: CI builds the
+`GrumbleAppStore` target (sandboxed, no Sparkle — the store owns updates),
+uploads it, creates the store version, attaches the build once Apple
+finishes processing it, sets What's New from the tag annotation (falling
+back to a stock message), and submits for review; the version releases
+automatically after approval. Signing is cloud-managed: the export re-signs
+the archive with an Apple Distribution certificate created on demand
+through the App Store Connect API key, which therefore needs Admin access
+(App Manager alone cannot use cloud-managed certificates). To run the same
+flow locally: `APP_STORE_CONNECT_KEY_FILE=/path/to/AuthKey.p8
+APP_STORE_CONNECT_KEY_ID=… APP_STORE_CONNECT_ISSUER_ID=… just appstore
+appstore-submit`.
 
 Repository secrets used: `MACOS_CERTIFICATE_P12` (base64 Developer ID .p12),
 `MACOS_CERTIFICATE_PASSWORD`, `APP_STORE_CONNECT_API_KEY` (.p8 contents),

@@ -161,8 +161,23 @@ appstore: archive-appstore
         -authenticationKeyPath "$APP_STORE_CONNECT_KEY_FILE" \
         -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
         -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
-    echo "Uploaded to App Store Connect - select the build and submit for review at"
-    echo "https://appstoreconnect.apple.com/apps/6791293617/distribution"
+    echo "Uploaded to App Store Connect. Submit with: just appstore-submit"
+
+# Create the store version for APP_VERSION, attach the processed build, and
+# submit it for review (auto-releases after approval). Same credentials as
+# `appstore`; APP_VERSION/APP_BUILD must match the uploaded build.
+appstore-submit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${APP_STORE_CONNECT_KEY_FILE:?absolute path to the .p8 App Store Connect API key}"
+    : "${APP_STORE_CONNECT_KEY_ID:?}"
+    : "${APP_STORE_CONNECT_ISSUER_ID:?}"
+    export APP_VERSION="${APP_VERSION:-$(grep -E 'MARKETING_VERSION:' project.yml | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')}"
+    export APP_BUILD="${APP_BUILD:-$(grep -E 'CURRENT_PROJECT_VERSION:' project.yml | sed -E 's/.*"([0-9]+)".*/\1/')}"
+    ASC_KEY_FILE="$APP_STORE_CONNECT_KEY_FILE" \
+    ASC_KEY_ID="$APP_STORE_CONNECT_KEY_ID" \
+    ASC_ISSUER_ID="$APP_STORE_CONNECT_ISSUER_ID" \
+        swift scripts/appstore-release.swift --submit
 
 # Package a Sparkle update zip and regenerate the appcast served at
 # grumble.computer/desktop/darwin/appcast.xml. Enclosures point at GitHub

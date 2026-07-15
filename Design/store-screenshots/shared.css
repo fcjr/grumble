@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --deep: #14100d; --face: #1e1813; --raised: #262019;
+  --amber: #e8a33d; --amber-hi: #ffc873; --amber-dim: #b98430;
+  --bone: #efe6d6; --bone-dim: #a89a85; --needle: #d4553a;
+}
+html, body { width: 1440px; height: 900px; overflow: hidden; }
+body {
+  background: var(--deep);
+  background-image: radial-gradient(1100px 700px at 50% 38%, rgba(232,163,61,0.07), transparent 70%);
+  color: var(--bone);
+  font-family: -apple-system, system-ui, sans-serif;
+  display: flex; flex-direction: column; align-items: center;
+}
+.panel { font-family: "Barlow Condensed", sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; }
+.hl { text-align: center; margin-top: 84px; }
+.hl h1 { font-family: "Barlow Condensed", sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; font-size: 74px; line-height: 1.04; color: var(--bone); }
+.hl h1 .a { color: var(--amber); }
+.hl p { margin-top: 22px; font-size: 26px; color: var(--bone-dim); }
+.keycap {
+  display: inline-block; padding: 2px 20px 4px;
+  border: 2px solid rgba(255,255,255,0.14); border-bottom-width: 5px;
+  border-radius: 12px; background: var(--raised);
+  font-family: ui-monospace, Menlo, monospace; color: var(--bone);
+  font-size: 0.92em; vertical-align: baseline;
+}
+.win {
+  background: var(--face); border: 1.5px solid rgba(255,255,255,0.09);
+  border-radius: 18px; box-shadow: 0 34px 80px rgba(0,0,0,0.55);
+  overflow: hidden;
+}
+.tbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.tl { width: 13px; height: 13px; border-radius: 50%; }
+.tl.r { background: #f6605a; } .tl.y { background: #fbbd2e; } .tl.g { background: #43c645; }
+.tname { flex: 1; text-align: center; color: var(--bone-dim); font-size: 15px; margin-right: 55px; }
+.cursor { display: inline-block; width: 3px; height: 1.15em; background: var(--amber); vertical-align: text-bottom; }
+.pill {
+  display: flex; align-items: center; gap: 14px;
+  background: rgba(30,24,19,0.97); border: 1.5px solid rgba(255,255,255,0.10);
+  border-radius: 27px; padding: 15px 26px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6);
+}
+.pill .dot { width: 15px; height: 15px; border-radius: 50%; background: var(--needle); }
+.pill .lbl { font-family: "Barlow Condensed", sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; color: var(--needle); font-size: 21px; }
+.bars { display: flex; align-items: center; gap: 5px; height: 26px; }
+.bars i { width: 6px; border-radius: 3px; background: var(--amber); display: block; }

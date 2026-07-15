@@ -52,6 +52,26 @@ jobs:
           APP_STORE_CONNECT_KEY_FILE="$KEY_FILE" just appstore
           rm "$KEY_FILE"
 
+      # Create the store version, wait for the build to process, attach it,
+      # set What's New from the tag annotation (if any), and submit for
+      # review. The version auto-releases after approval.
+      - name: Submit for App Review
+        env:
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          export APP_VERSION="${GITHUB_REF_NAME#v}"
+          export APP_BUILD="$(git rev-list --count HEAD)"
+          KEY_FILE="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY" > "$KEY_FILE"
+          export RELEASE_NOTES="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | head -c 3900)"
+          ASC_KEY_FILE="$KEY_FILE" \
+          ASC_KEY_ID="$APP_STORE_CONNECT_KEY_ID" \
+          ASC_ISSUER_ID="$APP_STORE_CONNECT_ISSUER_ID" \
+            swift scripts/appstore-release.swift --submit
+          rm "$KEY_FILE"
+
   release:
     runs-on: macos-15
     steps:
