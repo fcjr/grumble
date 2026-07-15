@@ -206,7 +206,17 @@ final class DictationController {
         state = .loadingModel
         modelState = .loading
         let task = Task { () throws -> any StreamingAsrManager in
-            let newManager = wanted.createManager()
+            let newManager: any StreamingAsrManager
+            if let unifiedConfig = wanted.unifiedConfig {
+                // Construct directly so provisional partials can be enabled:
+                // words land at buffer cadence and self-correct once the
+                // chunk commits with full right context.
+                let unified = StreamingUnifiedAsrManager(config: unifiedConfig)
+                await unified.setProvisionalPartials(true)
+                newManager = unified
+            } else {
+                newManager = wanted.createManager()
+            }
             try await newManager.loadModels()
             return newManager
         }

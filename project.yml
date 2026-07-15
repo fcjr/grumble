@@ -7,8 +7,10 @@ options:
 
 packages:
   FluidAudio:
-    url: https://github.com/FluidInference/FluidAudio
-    from: "0.15.0"
+    # Fork adds provisional partial transcripts (live self-correction);
+    # branched from v0.15.5, intended to be upstreamed.
+    url: https://github.com/fcjr/FluidAudio
+    branch: provisional-partials
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.7.0"
