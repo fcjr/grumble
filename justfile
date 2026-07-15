@@ -48,15 +48,23 @@ release:
         echo "error: HEAD is not the latest commit on origin/main - pull or push first" >&2
         exit 1
     fi
-    latest=$(git tag -l 'v*' | sort -V | tail -1)
+    latest=$(git ls-remote --tags origin 'v*' | sed -E 's|.*refs/tags/||' \
+        | grep -v '\^{}' | sort -V | tail -1)
     if [ -n "$latest" ]; then
         newest=$(printf '%s\n%s\n' "$latest" "$tag" | sort -V | tail -1)
         if [ "$tag" = "$latest" ] || [ "$newest" != "$tag" ]; then
-            echo "error: $tag is not newer than the latest tag ($latest) - run 'just bump' first" >&2
+            echo "error: $tag is not newer than the latest released tag ($latest) - run 'just bump' first" >&2
             exit 1
         fi
     fi
-    git tag "$tag"
+    if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+        if [ "$(git rev-parse "$tag^{commit}")" != "$(git rev-parse HEAD)" ]; then
+            echo "error: local tag $tag already exists but points at a different commit" >&2
+            exit 1
+        fi
+    else
+        git tag "$tag"
+    fi
     git push origin "$tag"
     echo "Released $tag - CI is building. Watch with: gh run watch"
 
