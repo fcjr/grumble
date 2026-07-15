@@ -14,6 +14,22 @@ final class AudioCapture {
         onConfigurationChange: @escaping () -> Void
     ) throws {
         let input = engine.inputNode
+        // Pin capture to the user's chosen device; with no choice (or the
+        // chosen device unplugged) the engine follows the system default.
+        // Must happen before the format is read so the tap matches the
+        // pinned device.
+        if var deviceID = AudioInputDevices.preferredDeviceID(), let unit = input.audioUnit {
+            let status = AudioUnitSetProperty(
+                unit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &deviceID,
+                UInt32(MemoryLayout<AudioDeviceID>.size))
+            if status != noErr {
+                NSLog("Grumble: failed to pin input device (\(status)); using system default")
+            }
+        }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             throw NSError(
