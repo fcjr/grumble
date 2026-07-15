@@ -42,9 +42,9 @@ add the input and package:
 }
 ```
 
-Note that Nix installs are updated through Nix, not Sparkle: the in-app
-updater can't modify the read-only Nix store, so update by bumping the
-flake input (`nix flake update grumble`).
+Nix installs are updated through Nix, not Sparkle: Grumble detects that it's
+running from the Nix store and disables the in-app updater (the store is
+read-only), so update by bumping the flake input (`nix flake update grumble`).
 
 Or download [Grumble.dmg](https://github.com/fcjr/grumble/releases/latest/download/Grumble.dmg)
 from the [latest release](https://github.com/fcjr/grumble/releases/latest) and
