@@ -79,7 +79,7 @@ final class PermissionsController {
 
         axRow = PermissionRow(
             title: "Accessibility",
-            detail: "So Grumble can type into other apps. Add Grumble with + and switch it on."
+            detail: "So Grumble can type into other apps — switch Grumble on in the list."
         ) { [weak self] in self?.axAction() }
 
         hotKeyRow = PermissionRow(
@@ -247,6 +247,15 @@ final class PermissionsController {
     }
 
     private func axAction() {
+        if !AXIsProcessTrusted() {
+            // Registers Grumble in the Accessibility list (switched off) so
+            // the user only has to flip the toggle instead of adding it with
+            // the + button. macOS shows its own dialog only when the app
+            // isn't already listed.
+            let options =
+                [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+        }
         openSettings(
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
     }
