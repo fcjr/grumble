@@ -29,8 +29,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     # Overridden by CI from the release tag (APP_VERSION / APP_BUILD).
-    MARKETING_VERSION: "0.1.5"
-    CURRENT_PROJECT_VERSION: "6"
+    MARKETING_VERSION: "0.1.6"
+    CURRENT_PROJECT_VERSION: "7"
     # Sign everything (including Debug) with Developer ID so dev builds and
     # DMG installs share one TCC identity - otherwise permission grants only
     # apply to whichever signature was granted last.
