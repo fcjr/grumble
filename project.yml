@@ -45,6 +45,8 @@ targets:
       - path: Resources/Assets.xcassets
       - path: Resources/AppIcon.icns
         buildPhase: resources
+      - path: Resources/Acknowledgements.txt
+        buildPhase: resources
     dependencies:
       - package: FluidAudio
       - package: Sparkle

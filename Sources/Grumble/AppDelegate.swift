@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var modelMenu: NSMenu!
     private lazy var overlay = OverlayController()
     private let permissions = PermissionsController()
+    private let about = AboutController()
     private let hotKeyRecorder = HotKeyRecorder()
     private let updaterController = SPUStandardUpdaterController(
         startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
@@ -107,6 +108,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             permissions.showIfNeeded()
         }
+        if CommandLine.arguments.contains("--about") {
+            about.show()
+        }
         if CommandLine.arguments.contains("--check-updates") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 self?.updaterController.checkForUpdates(nil)
@@ -172,6 +176,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateItem.target = updaterController
         menu.addItem(updateItem)
 
+        let aboutItem = NSMenuItem(
+            title: "About Grumble", action: #selector(openAbout), keyEquivalent: "")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
@@ -227,6 +236,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSetup() {
         permissions.show()
+    }
+
+    @objc private func openAbout() {
+        about.show()
     }
 
     @objc private func toggleLaunchAtLogin() {
