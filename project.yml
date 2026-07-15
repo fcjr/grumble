@@ -23,7 +23,11 @@ schemes:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    CODE_SIGN_STYLE: Automatic
+    # Sign everything (including Debug) with Developer ID so dev builds and
+    # DMG installs share one TCC identity - otherwise permission grants only
+    # apply to whichever signature was granted last.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "Developer ID Application: Left Shift Logical, LLC (KNBPD99JQM)"
     DEVELOPMENT_TEAM: KNBPD99JQM
 
 targets:
