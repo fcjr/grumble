@@ -29,9 +29,36 @@ bump level="patch":
     sed -i '' -E "s/CURRENT_PROJECT_VERSION: \"$build\"/CURRENT_PROJECT_VERSION: \"$next_build\"/" project.yml
     git add project.yml
     git commit -m "v$next"
-    git tag "v$next"
     echo "Bumped $current -> $next (build $next_build)"
-    echo "Release with: git push && git push origin v$next"
+    echo "Release with: git push && just release"
+
+# Release the version at HEAD: verify it's pushed and newer than the
+# latest tag, then tag and push the tag (which triggers the CI release)
+release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(grep -E 'MARKETING_VERSION:' project.yml | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+    tag="v$version"
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "error: uncommitted changes - commit or stash first" >&2
+        exit 1
+    fi
+    git fetch origin main --tags
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+        echo "error: HEAD is not the latest commit on origin/main - pull or push first" >&2
+        exit 1
+    fi
+    latest=$(git tag -l 'v*' | sort -V | tail -1)
+    if [ -n "$latest" ]; then
+        newest=$(printf '%s\n%s\n' "$latest" "$tag" | sort -V | tail -1)
+        if [ "$tag" = "$latest" ] || [ "$newest" != "$tag" ]; then
+            echo "error: $tag is not newer than the latest tag ($latest) - run 'just bump' first" >&2
+            exit 1
+        fi
+    fi
+    git tag "$tag"
+    git push origin "$tag"
+    echo "Released $tag - CI is building. Watch with: gh run watch"
 
 # Generate the Xcode project
 generate:
