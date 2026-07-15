@@ -47,9 +47,9 @@ Sparkle update zip to a GitHub release, regenerates the signed appcast at
 site.
 
 Repository secrets used: `MACOS_CERTIFICATE_P12` (base64 Developer ID .p12),
-`MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_PASSWORD` (app-specific
-password for notarytool), `SPARKLE_PRIVATE_KEY`, `CLOUDFLARE_API_TOKEN`,
-`CLOUDFLARE_ACCOUNT_ID`.
+`MACOS_CERTIFICATE_PASSWORD`, `APP_STORE_CONNECT_API_KEY` (.p8 contents),
+`APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`,
+`SPARKLE_PRIVATE_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Models
 
