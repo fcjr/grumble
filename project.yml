@@ -37,6 +37,9 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "Developer ID Application: Left Shift Logical, LLC (KNBPD99JQM)"
     DEVELOPMENT_TEAM: KNBPD99JQM
+    # Required for the microphone under the hardened runtime: without the
+    # audio-input entitlement, tccd denies mic access without ever prompting.
+    CODE_SIGN_ENTITLEMENTS: Resources/Grumble.entitlements
 
 targets:
   Grumble:
