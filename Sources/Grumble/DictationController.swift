@@ -93,7 +93,7 @@ final class DictationController {
             await manager.setPartialTranscriptCallback { [weak self] text in
                 Task { @MainActor in
                     guard let self, self.state == .listening else { return }
-                    self.injector.update(to: text)
+                    self.injector.update(to: Self.stablePrefix(of: text))
                 }
             }
             try await manager.reset()
@@ -234,6 +234,16 @@ final class DictationController {
             if state == .loadingModel { state = .idle }
             throw error
         }
+    }
+
+    /// Hold back the trailing in-progress word while listening: the frontier
+    /// of the transcript is decoded with the least context and thrashes the
+    /// most, so typing it live reads as jumpy. Revisions to earlier words
+    /// still stream through; the held word lands on the next partial or at
+    /// finish().
+    private static func stablePrefix(of text: String) -> String {
+        guard let lastSpace = text.lastIndex(of: " ") else { return "" }
+        return String(text[..<text.index(after: lastSpace)])
     }
 
     private func showAlert(_ message: String) {
