@@ -58,6 +58,19 @@ pkg: generate
         -derivedDataPath build -quiet build {{ version_flags }}
     mkdir -p build/pkg/dmg
     cp -R build/Build/Products/Release/Grumble.app build/pkg/dmg/
+    # Sparkle's nested executables ship with Sparkle's own signature, which
+    # notarization rejects - re-sign them inside-out with our identity.
+    codesign --force --options runtime --timestamp --sign "{{ sign_identity }}" \
+        "build/pkg/dmg/Grumble.app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc"
+    codesign --force --options runtime --timestamp --preserve-metadata=entitlements \
+        --sign "{{ sign_identity }}" \
+        "build/pkg/dmg/Grumble.app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc"
+    codesign --force --options runtime --timestamp --sign "{{ sign_identity }}" \
+        "build/pkg/dmg/Grumble.app/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+    codesign --force --options runtime --timestamp --sign "{{ sign_identity }}" \
+        "build/pkg/dmg/Grumble.app/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"
+    codesign --force --options runtime --timestamp --sign "{{ sign_identity }}" \
+        "build/pkg/dmg/Grumble.app/Contents/Frameworks/Sparkle.framework"
     codesign --force --options runtime --timestamp \
         --sign "{{ sign_identity }}" build/pkg/dmg/Grumble.app
     codesign --verify --strict --deep build/pkg/dmg/Grumble.app

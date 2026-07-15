@@ -64,6 +64,7 @@ jobs:
             --wait
           rm "$KEY_FILE"
           xcrun stapler staple build/Grumble.dmg
+          xcrun stapler staple build/pkg/dmg/Grumble.app
 
       - name: Package Sparkle update and regenerate appcast
         env:
