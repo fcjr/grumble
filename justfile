@@ -55,6 +55,22 @@ notarize: pkg
         --keychain-profile "{{ notary_profile }}" --wait
     xcrun stapler staple build/Grumble.dmg
 
+# Package a Sparkle update zip and regenerate the appcast served at
+# grumble.computer/desktop/darwin/appcast.xml (deploy the site after).
+appcast: pkg
+    #!/usr/bin/env bash
+    set -euo pipefail
+    feed_dir=apps/web/public/desktop/darwin
+    version=$(plutil -extract CFBundleShortVersionString raw \
+        build/pkg/dmg/Grumble.app/Contents/Info.plist)
+    mkdir -p "$feed_dir"
+    ditto -c -k --keepParent build/pkg/dmg/Grumble.app \
+        "$feed_dir/Grumble-$version.zip"
+    sparkle_bin=$(ls -d ~/Library/Developer/Xcode/DerivedData/Grumble-*/SourcePackages/artifacts/sparkle/Sparkle/bin | head -1)
+    "$sparkle_bin/generate_appcast" "$feed_dir" \
+        --download-url-prefix https://grumble.computer/desktop/darwin/
+    echo "Appcast at $feed_dir/appcast.xml - run 'pnpm deploy' to publish"
+
 # Remove generated project and build artifacts
 clean:
     rm -rf Grumble.xcodeproj build DerivedData

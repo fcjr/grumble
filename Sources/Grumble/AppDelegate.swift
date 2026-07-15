@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import FluidAudio
 import ServiceManagement
+import Sparkle
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -16,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var overlay = OverlayController()
     private let permissions = PermissionsController()
     private let hotKeyRecorder = HotKeyRecorder()
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
     private var currentHotKey = HotKey.load()
     private var lastState: DictationController.State = .idle
 
@@ -151,6 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             title: "Setup\u{2026}", action: #selector(openSetup), keyEquivalent: "")
         setupItem.target = self
         menu.addItem(setupItem)
+
+        let updateItem = NSMenuItem(
+            title: "Check for Updates\u{2026}",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: "")
+        updateItem.target = updaterController
+        menu.addItem(updateItem)
 
         menu.addItem(.separator())
 

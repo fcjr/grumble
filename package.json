@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
-    "deploy": "pnpm --filter web deploy"
+    "deploy": "pnpm --filter web run deploy"
   },
   "packageManager": "pnpm@10.28.0"
 }

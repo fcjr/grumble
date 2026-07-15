@@ -9,6 +9,9 @@ packages:
   FluidAudio:
     url: https://github.com/FluidInference/FluidAudio
     from: "0.15.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.7.0"
 
 schemes:
   Grumble:
@@ -40,6 +43,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: FluidAudio
+      - package: Sparkle
     info:
       path: Resources/Info.plist
       properties:
@@ -49,6 +53,9 @@ targets:
         LSMinimumSystemVersion: "14.0"
         LSUIElement: true
         NSMicrophoneUsageDescription: Grumble listens to your microphone to transcribe your speech into text.
+        SUFeedURL: https://grumble.computer/desktop/darwin/appcast.xml
+        SUEnableAutomaticChecks: true
+        SUPublicEDKey: WArXB/9ipPXBqgStv95Sw1WxCFDvWy1FWAN4u/l5w8g=
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.leftshift.grumble
