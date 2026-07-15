@@ -14,6 +14,10 @@ Requires macOS 14+. Install with [Homebrew](https://brew.sh):
 brew install --cask fcjr/fcjr/grumble
 ```
 
+Or download [Grumble.dmg](https://github.com/fcjr/grumble/releases/latest/download/Grumble.dmg)
+from the [latest release](https://github.com/fcjr/grumble/releases/latest) and
+drag Grumble to Applications.
+
 Or with [Nix](https://nixos.org) flakes:
 
 ```sh
@@ -45,10 +49,6 @@ add the input and package:
 Nix installs are updated through Nix, not Sparkle: Grumble detects that it's
 running from the Nix store and disables the in-app updater (the store is
 read-only), so update by bumping the flake input (`nix flake update grumble`).
-
-Or download [Grumble.dmg](https://github.com/fcjr/grumble/releases/latest/download/Grumble.dmg)
-from the [latest release](https://github.com/fcjr/grumble/releases/latest) and
-drag Grumble to Applications.
 
 ## How it works
 
