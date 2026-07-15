@@ -3,12 +3,12 @@
     <channel>
         <title>Grumble</title>
         <item>
-            <title>0.1.0</title>
-            <pubDate>Wed, 15 Jul 2026 00:00:47 -0400</pubDate>
-            <sparkle:version>1</sparkle:version>
-            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <title>0.1.2</title>
+            <pubDate>Wed, 15 Jul 2026 04:53:40 +0000</pubDate>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>0.1.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://grumble.computer/desktop/darwin/Grumble-0.1.0.zip" length="5768570" type="application/octet-stream" sparkle:edSignature="McypituDTxjvI/EYTqz6PpSYKtfCUxdLOQkS+RpyRUqLijngb26IMxKmKIuYxvgIPaYmWNdSfzNCypr8RL7oAw=="/>
+            <enclosure url="https://github.com/fcjr/grumble/releases/download/v0.1.2/Grumble-0.1.2.zip" length="5824430" type="application/octet-stream" sparkle:edSignature="Pa4GJjPTIPfLSbhKMfT8S3mopzHda1bjeELrY9jJE8xW2HNBBEWBsvlCz0a2pCaePSN5ZcWvYYRFJuqAkcxeBQ=="/>
         </item>
     </channel>
 </rss>
