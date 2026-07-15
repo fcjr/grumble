@@ -2,7 +2,10 @@ import AppKit
 import ApplicationServices
 import FluidAudio
 import ServiceManagement
-import Sparkle
+
+#if !APPSTORE
+    import Sparkle
+#endif
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -18,18 +21,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let permissions = PermissionsController()
     private let about = AboutController()
     private let hotKeyRecorder = HotKeyRecorder()
-    // Sparkle can't replace a bundle in the read-only Nix store (and nix-darwin
-    // copies into "Nix Apps" get overwritten on the next rebuild), so Nix owns
-    // updates there - never start the updater or schedule checks.
-    private static let isNixInstall: Bool = {
-        let resolved = (Bundle.main.bundlePath as NSString).resolvingSymlinksInPath
-        return resolved.hasPrefix("/nix/store") || resolved.contains("/Nix Apps/")
-    }()
-    private let updaterController: SPUStandardUpdaterController? =
-        isNixInstall
-        ? nil
-        : SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    #if !APPSTORE
+        // Sparkle can't replace a bundle in the read-only Nix store (and nix-darwin
+        // copies into "Nix Apps" get overwritten on the next rebuild), so Nix owns
+        // updates there - never start the updater or schedule checks.
+        private static let isNixInstall: Bool = {
+            let resolved = (Bundle.main.bundlePath as NSString).resolvingSymlinksInPath
+            return resolved.hasPrefix("/nix/store") || resolved.contains("/Nix Apps/")
+        }()
+        private let updaterController: SPUStandardUpdaterController? =
+            isNixInstall
+            ? nil
+            : SPUStandardUpdaterController(
+                startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    #endif
     private var currentHotKey = HotKey.load()
     private var lastState: DictationController.State = .idle
 
@@ -121,11 +126,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if CommandLine.arguments.contains("--about") {
             about.show()
         }
-        if CommandLine.arguments.contains("--check-updates"), updaterController != nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                self?.updaterController?.checkForUpdates(nil)
+        #if !APPSTORE
+            if CommandLine.arguments.contains("--check-updates"), updaterController != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    self?.updaterController?.checkForUpdates(nil)
+                }
             }
-        }
+        #endif
         dictation.preload()
     }
 
@@ -179,19 +186,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupItem.target = self
         menu.addItem(setupItem)
 
-        if let updaterController {
-            let updateItem = NSMenuItem(
-                title: "Check for Updates\u{2026}",
-                action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
-                keyEquivalent: "")
-            updateItem.target = updaterController
-            menu.addItem(updateItem)
-        } else {
-            let updateItem = NSMenuItem(
-                title: "Updates Managed by Nix", action: nil, keyEquivalent: "")
-            updateItem.isEnabled = false
-            menu.addItem(updateItem)
-        }
+        // App Store builds have no updater UI - the store handles updates.
+        #if !APPSTORE
+            if let updaterController {
+                let updateItem = NSMenuItem(
+                    title: "Check for Updates\u{2026}",
+                    action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                    keyEquivalent: "")
+                updateItem.target = updaterController
+                menu.addItem(updateItem)
+            } else {
+                let updateItem = NSMenuItem(
+                    title: "Updates Managed by Nix", action: nil, keyEquivalent: "")
+                updateItem.isEnabled = false
+                menu.addItem(updateItem)
+            }
+        #endif
 
         let aboutItem = NSMenuItem(
             title: "About Grumble", action: #selector(openAbout), keyEquivalent: "")

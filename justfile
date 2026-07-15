@@ -132,6 +132,38 @@ notarize: pkg
         --keychain-profile "{{ notary_profile }}" --wait
     xcrun stapler staple build/Grumble.dmg
 
+# Archive the sandboxed Mac App Store build (no Sparkle)
+archive-appstore: generate
+    rm -rf build/GrumbleAppStore.xcarchive
+    xcodebuild -project Grumble.xcodeproj -scheme GrumbleAppStore \
+        -configuration Release -derivedDataPath build \
+        -archivePath build/GrumbleAppStore.xcarchive \
+        -quiet archive {{ version_flags }}
+
+# Archive and upload to App Store Connect. Signing is cloud-managed: the
+# export re-signs the archive with an Apple Distribution certificate and
+# provisioning profile created on demand via the App Store Connect API key
+# (the key needs the App Manager role). Requires:
+#   APP_STORE_CONNECT_KEY_FILE  absolute path to the .p8 key
+#   APP_STORE_CONNECT_KEY_ID    key ID
+#   APP_STORE_CONNECT_ISSUER_ID issuer ID
+appstore: archive-appstore
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${APP_STORE_CONNECT_KEY_FILE:?absolute path to the .p8 App Store Connect API key}"
+    : "${APP_STORE_CONNECT_KEY_ID:?}"
+    : "${APP_STORE_CONNECT_ISSUER_ID:?}"
+    xcodebuild -exportArchive \
+        -archivePath build/GrumbleAppStore.xcarchive \
+        -exportOptionsPlist Resources/ExportOptions-AppStore.plist \
+        -exportPath build/appstore \
+        -allowProvisioningUpdates \
+        -authenticationKeyPath "$APP_STORE_CONNECT_KEY_FILE" \
+        -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+        -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+    echo "Uploaded to App Store Connect - select the build and submit for review at"
+    echo "https://appstoreconnect.apple.com/apps/6791293617/distribution"
+
 # Package a Sparkle update zip and regenerate the appcast served at
 # grumble.computer/desktop/darwin/appcast.xml. Enclosures point at GitHub
 # release assets; normally CI runs this on tag push (see release.yml).

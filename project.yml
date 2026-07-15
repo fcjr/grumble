@@ -24,6 +24,14 @@ schemes:
       config: Debug
     archive:
       config: Release
+  GrumbleAppStore:
+    build:
+      targets:
+        GrumbleAppStore: all
+    run:
+      config: Debug
+    archive:
+      config: Release
 
 settings:
   base:
@@ -62,6 +70,7 @@ targets:
         CFBundleIconFile: AppIcon
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
         LSMinimumSystemVersion: "14.0"
         LSUIElement: true
         NSMicrophoneUsageDescription: Grumble listens to your microphone to transcribe your speech into text.
@@ -72,3 +81,43 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.leftshift.grumble
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  # Mac App Store variant: sandboxed, no Sparkle (the store owns updates).
+  # Archived with the Developer ID identity like everything else; export to
+  # App Store Connect re-signs with a cloud-managed Apple Distribution
+  # certificate (see `just appstore`).
+  GrumbleAppStore:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/Grumble
+      - path: Resources/Assets.xcassets
+      - path: Resources/AppIcon.icns
+        buildPhase: resources
+      - path: Resources/Acknowledgements.txt
+        buildPhase: resources
+    dependencies:
+      - package: FluidAudio
+    info:
+      path: Resources/InfoAppStore.plist
+      properties:
+        CFBundleDisplayName: Grumble
+        CFBundleIconFile: AppIcon
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: "14.0"
+        LSUIElement: true
+        NSMicrophoneUsageDescription: Grumble listens to your microphone to transcribe your speech into text.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_NAME: Grumble
+        PRODUCT_BUNDLE_IDENTIFIER: com.leftshift.grumble
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: Resources/GrumbleAppStore.entitlements
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG APPSTORE
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: APPSTORE
