@@ -1,0 +1,13 @@
+name = "grumble-web"
+compatibility_date = "2026-07-14"
+
+# Static landing page: assets-only Worker, no server code to invoke.
+[assets]
+not_found_handling = "single-page-application"
+
+[[routes]]
+pattern = "grumble.computer"
+custom_domain = true
+
+[observability]
+enabled = true
