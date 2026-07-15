@@ -66,3 +66,7 @@ Switch models from the menu bar icon → Model:
 All of FluidAudio's true-streaming variants are currently English-only. The
 multilingual Parakeet TDT v3 model only supports offline/sliding-window
 transcription, so it can't stream partial tokens live.
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE). © 2026 Left Shift Logical, LLC.
