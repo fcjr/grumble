@@ -230,19 +230,27 @@ func submit(versionID: String) {
     }
     guard let submissionID else { fail("no usable review submission: \(created)") }
 
-    _ = api(
-        "POST", "/v1/reviewSubmissionItems",
-        body: [
-            "data": [
-                "type": "reviewSubmissionItems",
-                "relationships": [
-                    "reviewSubmission": [
-                        "data": ["type": "reviewSubmissions", "id": submissionID]
+    // Only add the version if the submission doesn't already carry an item;
+    // a swallowed error here would leave an empty submission that cannot be
+    // submitted, so real failures must stay fatal.
+    let existingItems = items(api("GET", "/v1/reviewSubmissions/\(submissionID)/items"))
+    if existingItems.isEmpty {
+        _ = api(
+            "POST", "/v1/reviewSubmissionItems",
+            body: [
+                "data": [
+                    "type": "reviewSubmissionItems",
+                    "relationships": [
+                        "reviewSubmission": [
+                            "data": ["type": "reviewSubmissions", "id": submissionID]
+                        ],
+                        "appStoreVersion": [
+                            "data": ["type": "appStoreVersions", "id": versionID]
+                        ],
                     ],
-                    "appStoreVersion": ["data": ["type": "appStoreVersions", "id": versionID]],
-                ],
-            ]
-        ], allowedErrors: [409])
+                ]
+            ])
+    }
 
     _ = api(
         "PATCH", "/v1/reviewSubmissions/\(submissionID)",
