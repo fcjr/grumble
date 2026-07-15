@@ -12,8 +12,19 @@ import CoreAudio
 /// elsewhere - flipping Bluetooth headphones into the degraded HFP profile
 /// while their mic isn't even wanted.
 final class AudioCapture {
+    /// Frames handed downstream per buffer. AUHAL delivers the device's
+    /// native IO slices (typically ~10 ms), but FluidAudio's AudioConverter
+    /// resamples every delivered buffer independently (a fresh stateless
+    /// converter per call), so each buffer boundary is a filter edge. Slices
+    /// are accumulated to the same 4096-frame cadence the old AVAudioEngine
+    /// tap produced; per-slice delivery would make those resampling seams
+    /// ~8x more frequent and audibly degrade the features the recognizer
+    /// sees. Levels still go out per slice, so the meter stays live.
+    private static let chunkFrames: AVAudioFrameCount = 4096
+
     private var unit: AudioUnit?
     private var format: AVAudioFormat?
+    private var staging: AVAudioPCMBuffer?
     private var onBuffer: ((AVAudioPCMBuffer) -> Void)?
     private var onLevel: ((Float) -> Void)?
     private var onConfigurationChange: (() -> Void)?
@@ -126,6 +137,12 @@ final class AudioCapture {
             AudioOutputUnitStop(unit)
             AudioUnitUninitialize(unit)
         }
+        // Render callbacks have stopped; hand the partial chunk downstream so
+        // finish() transcribes right up to the moment dictation ended.
+        if let chunk = staging, chunk.frameLength > 0 {
+            staging = nil
+            onBuffer?(chunk)
+        }
         cleanup()
     }
 
@@ -136,16 +153,43 @@ final class AudioCapture {
         _ inNumberFrames: UInt32
     ) -> OSStatus {
         guard let unit, let format,
-            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: inNumberFrames)
+            let slice = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: inNumberFrames)
         else { return noErr }
-        buffer.frameLength = inNumberFrames
+        slice.frameLength = inNumberFrames
         let status = AudioUnitRender(
             unit, ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames,
-            buffer.mutableAudioBufferList)
+            slice.mutableAudioBufferList)
         guard status == noErr else { return status }
-        onBuffer?(buffer)
-        onLevel?(Self.level(of: buffer))
+        onLevel?(Self.level(of: slice))
+        accumulate(slice)
         return noErr
+    }
+
+    /// Copy a rendered slice into the staging chunk, handing full chunks
+    /// downstream. Only touched from the render thread (and from stop(),
+    /// after the unit has stopped).
+    private func accumulate(_ slice: AVAudioPCMBuffer) {
+        guard let format, let sliceData = slice.floatChannelData else { return }
+        var copied: AVAudioFrameCount = 0
+        while copied < slice.frameLength {
+            if staging == nil {
+                staging = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: Self.chunkFrames)
+            }
+            guard let chunk = staging, let chunkData = chunk.floatChannelData else { return }
+            let count = min(Self.chunkFrames - chunk.frameLength, slice.frameLength - copied)
+            for channel in 0..<Int(format.channelCount) {
+                memcpy(
+                    chunkData[channel] + Int(chunk.frameLength),
+                    sliceData[channel] + Int(copied),
+                    Int(count) * MemoryLayout<Float>.size)
+            }
+            chunk.frameLength += count
+            copied += count
+            if chunk.frameLength == Self.chunkFrames {
+                staging = nil
+                onBuffer?(chunk)
+            }
+        }
     }
 
     private func listen(to id: AudioObjectID, selector: AudioObjectPropertySelector) {
@@ -172,6 +216,7 @@ final class AudioCapture {
         }
         unit = nil
         format = nil
+        staging = nil
         onBuffer = nil
         onLevel = nil
         onConfigurationChange = nil
