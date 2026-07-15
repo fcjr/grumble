@@ -42,6 +42,7 @@ targets:
     platform: macOS
     sources:
       - Sources/Grumble
+      - path: Resources/Assets.xcassets
       - path: Resources/AppIcon.icns
         buildPhase: resources
     dependencies:
@@ -63,3 +64,4 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.leftshift.grumble
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

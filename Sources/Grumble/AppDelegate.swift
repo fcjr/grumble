@@ -45,6 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
+        // In-process icon lookups (Sparkle dialogs, NSAlert) resolve to the
+        // generic placeholder on macOS 26 even though LaunchServices has the
+        // real icon - pin it explicitly.
+        NSApp.applicationIconImage = NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.menu = buildMenu()
 
@@ -101,6 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             permissions.show()
         } else {
             permissions.showIfNeeded()
+        }
+        if CommandLine.arguments.contains("--check-updates") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.updaterController.checkForUpdates(nil)
+            }
         }
         dictation.preload()
     }
