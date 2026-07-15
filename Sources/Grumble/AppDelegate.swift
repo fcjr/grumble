@@ -47,6 +47,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         dictation.onPermissionsNeeded = { [weak self] in
             self?.permissions.show()
         }
+        permissions.hotKeyDisplay = { [weak self] in
+            self?.currentHotKey.displayString ?? ""
+        }
+        permissions.onChangeHotKey = { [weak self] in
+            self?.changeHotKey()
+        }
+
+        // Launch at login defaults to on; register once so turning it off
+        // later sticks.
+        let defaultedKey = "didDefaultLaunchAtLogin"
+        if !UserDefaults.standard.bool(forKey: defaultedKey) {
+            UserDefaults.standard.set(true, forKey: defaultedKey)
+            try? SMAppService.mainApp.register()
+        }
+
         if CommandLine.arguments.contains("--setup") {
             permissions.show()
         } else {

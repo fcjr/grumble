@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import ApplicationServices
+import ServiceManagement
 
 /// Setup window shown while Grumble is missing permissions. Walks through
 /// Microphone and Accessibility with buttons that open the exact System
@@ -18,6 +19,14 @@ final class PermissionsController {
     private var activationObserver: NSObjectProtocol?
     private var micRow: PermissionRow!
     private var axRow: PermissionRow!
+    private var hotKeyRow: PermissionRow!
+    private var loginCheckbox: NSButton!
+    private var closeWhenGranted = false
+
+    /// Supplied by the app delegate so the window can show and change the
+    /// current dictation hotkey.
+    var hotKeyDisplay: (() -> String)?
+    var onChangeHotKey: (() -> Void)?
 
     func showIfNeeded() {
         if !Self.allGranted() { show() }
@@ -32,11 +41,14 @@ final class PermissionsController {
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 470, height: 0),
-            styleMask: [.titled, .closable, .fullSizeContentView],
+            styleMask: [.titled, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Grumble Setup"
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
         window.appearance = NSAppearance(named: .darkAqua)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
@@ -48,11 +60,11 @@ final class PermissionsController {
 
         let heading = NSTextField(labelWithString: "")
         heading.attributedStringValue = .grumblePanelLabel(
-            "Grumble needs two permissions", size: 16, color: .grumbleAmber)
+            "Set up Grumble", size: 16, color: .grumbleAmber)
 
         let blurb = NSTextField(
             wrappingLabelWithString:
-                "Grumble listens on the hotkey and types what you say into the app you're using. macOS asks you to allow both explicitly."
+                "Put your cursor in any text field, press the hotkey, and talk — Grumble types as you speak. Press it again to stop. macOS needs you to allow two things first."
         )
         blurb.font = .systemFont(ofSize: 12)
         blurb.textColor = .grumbleBoneDim
@@ -65,21 +77,49 @@ final class PermissionsController {
 
         axRow = PermissionRow(
             title: "Accessibility",
-            detail: "So Grumble can type into other apps. Not listed? Add it with +."
+            detail: "So Grumble can type into other apps. Add Grumble with + and switch it on."
         ) { [weak self] in self?.axAction() }
+
+        hotKeyRow = PermissionRow(
+            title: "Hotkey",
+            detail: ""
+        ) { [weak self] in self?.onChangeHotKey?() }
+
+        loginCheckbox = NSButton(
+            checkboxWithTitle: "Start Grumble at login", target: self,
+            action: #selector(loginToggled))
+        loginCheckbox.attributedTitle = NSAttributedString(
+            string: "Start Grumble at login",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 12),
+                .foregroundColor: NSColor.grumbleBone,
+            ])
 
         let footer = NSTextField(
             labelWithString: "This window closes itself once both are on.")
         footer.font = .systemFont(ofSize: 11)
         footer.textColor = .grumbleBoneDim
 
-        let stack = NSStackView(views: [heading, blurb, micRow, axRow, footer])
+        let quitButton = NSButton(
+            title: "Quit Grumble", target: NSApp, action: #selector(NSApplication.terminate(_:)))
+        quitButton.bezelStyle = .rounded
+
+        let bottomBar = NSStackView(views: [footer, NSView(), quitButton])
+        bottomBar.orientation = .horizontal
+        bottomBar.alignment = .centerY
+        bottomBar.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [
+            heading, blurb, micRow, axRow, hotKeyRow, loginCheckbox, bottomBar,
+        ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
         stack.setCustomSpacing(10, after: heading)
         stack.setCustomSpacing(20, after: blurb)
-        stack.edgeInsets = NSEdgeInsets(top: 36, left: 28, bottom: 24, right: 28)
+        stack.setCustomSpacing(18, after: hotKeyRow)
+        stack.setCustomSpacing(18, after: loginCheckbox)
+        stack.edgeInsets = NSEdgeInsets(top: 36, left: 28, bottom: 20, right: 28)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let content = window.contentView!
@@ -89,13 +129,18 @@ final class PermissionsController {
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            micRow.widthAnchor.constraint(equalToConstant: 414),
-            axRow.widthAnchor.constraint(equalTo: micRow.widthAnchor),
+            stack.widthAnchor.constraint(equalToConstant: 470),
+            micRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
+            axRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
+            hotKeyRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
+            bottomBar.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
         ])
 
         self.window = window
+        closeWhenGranted = !Self.allGranted()
         refresh()
-        window.setContentSize(window.contentView!.fittingSize)
+        content.layoutSubtreeIfNeeded()
+        window.setContentSize(content.fittingSize)
         window.center()
         window.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
@@ -133,13 +178,32 @@ final class PermissionsController {
         )
         axRow.update(granted: AXIsProcessTrusted(), buttonTitle: "Open Settings\u{2026}")
 
-        if Self.allGranted() {
+        if let display = hotKeyDisplay?() {
+            hotKeyRow.setDetail("\(display) starts and stops dictation.")
+        }
+        hotKeyRow.showNeutral(buttonTitle: "Change\u{2026}")
+        loginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
+
+        if closeWhenGranted, Self.allGranted() {
             pollTimer?.invalidate()
             pollTimer = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
                 self?.close()
             }
         }
+    }
+
+    @objc private func loginToggled() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSLog("Grumble: failed to toggle launch at login: \(error)")
+        }
+        loginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
     private func close() {
@@ -192,10 +256,12 @@ final class PermissionsController {
 final class PermissionRow: NSView {
     private let dot = NSView()
     private let button = NSButton(title: "", target: nil, action: nil)
+    private let detailLabel: NSTextField
     private let action: () -> Void
 
     init(title: String, detail: String, action: @escaping () -> Void) {
         self.action = action
+        self.detailLabel = NSTextField(wrappingLabelWithString: detail)
         super.init(frame: .zero)
 
         wantsLayer = true
@@ -211,9 +277,10 @@ final class PermissionRow: NSView {
         let titleLabel = NSTextField(labelWithString: "")
         titleLabel.attributedStringValue = .grumblePanelLabel(
             title, size: 13, color: .grumbleBone)
-        let detailLabel = NSTextField(labelWithString: detail)
         detailLabel.font = .systemFont(ofSize: 11)
         detailLabel.textColor = .grumbleBoneDim
+        detailLabel.maximumNumberOfLines = 2
+        detailLabel.preferredMaxLayoutWidth = 240
 
         let text = NSStackView(views: [titleLabel, detailLabel])
         text.orientation = .vertical
@@ -232,7 +299,9 @@ final class PermissionRow: NSView {
         addSubview(text)
         addSubview(button)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 58),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 58),
+            text.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 10),
+            text.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -10),
             dot.widthAnchor.constraint(equalToConstant: 10),
             dot.heightAnchor.constraint(equalToConstant: 10),
             dot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
@@ -252,6 +321,17 @@ final class PermissionRow: NSView {
             (granted ? NSColor.systemGreen : NSColor.grumbleNeedle).cgColor
         button.isHidden = granted
         if !granted { button.title = buttonTitle }
+    }
+
+    /// Non-permission rows (e.g. the hotkey): amber dot, button always shown.
+    func showNeutral(buttonTitle: String) {
+        dot.layer?.backgroundColor = NSColor.grumbleAmber.cgColor
+        button.isHidden = false
+        button.title = buttonTitle
+    }
+
+    func setDetail(_ text: String) {
+        detailLabel.stringValue = text
     }
 
     @objc private func buttonPressed() {
