@@ -26,6 +26,9 @@ schemes:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # Overridden by CI from the release tag (APP_VERSION / APP_BUILD).
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
     # Sign everything (including Debug) with Developer ID so dev builds and
     # DMG installs share one TCC identity - otherwise permission grants only
     # apply to whichever signature was granted last.
@@ -49,7 +52,8 @@ targets:
       properties:
         CFBundleDisplayName: Grumble
         CFBundleIconFile: AppIcon
-        CFBundleShortVersionString: "0.1.0"
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: "14.0"
         LSUIElement: true
         NSMicrophoneUsageDescription: Grumble listens to your microphone to transcribe your speech into text.

@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install tools
+        run: brew install xcodegen create-dmg just
+
+      - name: Import Developer ID certificate
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S "apple-tool:,apple:" \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain
+          rm "$RUNNER_TEMP/cert.p12"
+
+      - name: Build signed DMG
+        run: |
+          export APP_VERSION="${GITHUB_REF_NAME#v}"
+          export APP_BUILD="$(git rev-list --count HEAD)"
+          just pkg
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool submit build/Grumble.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id KNBPD99JQM \
+            --wait
+          xcrun stapler staple build/Grumble.dmg
+
+      - name: Package Sparkle update and regenerate appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p build/updates
+          ditto -c -k --keepParent build/pkg/dmg/Grumble.app \
+            "build/updates/Grumble-$VERSION.zip"
+          KEY_FILE="$RUNNER_TEMP/sparkle_key"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
+          build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast \
+            build/updates \
+            --ed-key-file "$KEY_FILE" \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/"
+          rm "$KEY_FILE"
+          cp build/updates/appcast.xml "$RUNNER_TEMP/appcast.xml"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp build/Grumble.dmg "build/Grumble-$VERSION.dmg"
+          gh release create "$GITHUB_REF_NAME" \
+            "build/Grumble-$VERSION.dmg" \
+            "build/updates/Grumble-$VERSION.zip" \
+            --title "Grumble $VERSION" \
+            --generate-notes
+
+      - name: Commit updated appcast to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -f -B main origin/main
+          cp "$RUNNER_TEMP/appcast.xml" apps/web/public/desktop/darwin/appcast.xml
+          git add apps/web/public/desktop/darwin/appcast.xml
+          git diff --cached --quiet || git commit -m "Update appcast for $GITHUB_REF_NAME"
+          git push origin main
+
+      - name: Deploy website
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run deploy

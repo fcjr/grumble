@@ -38,6 +38,19 @@ just clean   # remove generated project and build artifacts
    will prompt; enable Grumble under System Settings → Privacy & Security →
    Accessibility.
 
+## Releasing
+
+Push a tag like `v0.2.0` and CI does the rest: builds and signs the app
+(version taken from the tag), notarizes the DMG, uploads the DMG and the
+Sparkle update zip to a GitHub release, regenerates the signed appcast at
+`grumble.computer/desktop/darwin/appcast.xml`, commits it, and redeploys the
+site.
+
+Repository secrets used: `MACOS_CERTIFICATE_P12` (base64 Developer ID .p12),
+`MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_PASSWORD` (app-specific
+password for notarytool), `SPARKLE_PRIVATE_KEY`, `CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID`.
+
 ## Models
 
 Switch models from the menu bar icon → Model:

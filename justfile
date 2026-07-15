@@ -1,6 +1,11 @@
 sign_identity := env_var_or_default("SIGN_IDENTITY", "Developer ID Application: Left Shift Logical, LLC (KNBPD99JQM)")
 notary_profile := env_var_or_default("NOTARY_PROFILE", "notary")
 
+# CI overrides these from the release tag; local builds use project.yml defaults.
+app_version := env_var_or_default("APP_VERSION", "")
+app_build := env_var_or_default("APP_BUILD", "")
+version_flags := (if app_version != "" { "MARKETING_VERSION=" + app_version } else { "" }) + " " + (if app_build != "" { "CURRENT_PROJECT_VERSION=" + app_build } else { "" })
+
 # Show available recipes
 default:
     @just --list
@@ -27,7 +32,7 @@ open: generate
 pkg: generate
     rm -rf build/pkg
     xcodebuild -project Grumble.xcodeproj -scheme Grumble -configuration Release \
-        -derivedDataPath build -quiet build
+        -derivedDataPath build -quiet build {{ version_flags }}
     mkdir -p build/pkg/dmg
     cp -R build/Build/Products/Release/Grumble.app build/pkg/dmg/
     codesign --force --options runtime --timestamp \
@@ -56,20 +61,22 @@ notarize: pkg
     xcrun stapler staple build/Grumble.dmg
 
 # Package a Sparkle update zip and regenerate the appcast served at
-# grumble.computer/desktop/darwin/appcast.xml (deploy the site after).
+# grumble.computer/desktop/darwin/appcast.xml. Enclosures point at GitHub
+# release assets; normally CI runs this on tag push (see release.yml).
 appcast: pkg
     #!/usr/bin/env bash
     set -euo pipefail
-    feed_dir=apps/web/public/desktop/darwin
     version=$(plutil -extract CFBundleShortVersionString raw \
         build/pkg/dmg/Grumble.app/Contents/Info.plist)
-    mkdir -p "$feed_dir"
+    mkdir -p build/updates apps/web/public/desktop/darwin
     ditto -c -k --keepParent build/pkg/dmg/Grumble.app \
-        "$feed_dir/Grumble-$version.zip"
-    sparkle_bin=$(ls -d ~/Library/Developer/Xcode/DerivedData/Grumble-*/SourcePackages/artifacts/sparkle/Sparkle/bin | head -1)
-    "$sparkle_bin/generate_appcast" "$feed_dir" \
-        --download-url-prefix https://grumble.computer/desktop/darwin/
-    echo "Appcast at $feed_dir/appcast.xml - run 'pnpm deploy' to publish"
+        "build/updates/Grumble-$version.zip"
+    sparkle_bin=build/SourcePackages/artifacts/sparkle/Sparkle/bin
+    "$sparkle_bin/generate_appcast" build/updates \
+        ${SPARKLE_PRIVATE_KEY_FILE:+--ed-key-file "$SPARKLE_PRIVATE_KEY_FILE"} \
+        --download-url-prefix "https://github.com/fcjr/grumble/releases/download/v$version/"
+    cp build/updates/appcast.xml apps/web/public/desktop/darwin/appcast.xml
+    echo "Appcast at apps/web/public/desktop/darwin/appcast.xml"
 
 # Remove generated project and build artifacts
 clean:
