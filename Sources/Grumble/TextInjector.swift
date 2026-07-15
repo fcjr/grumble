@@ -15,6 +15,17 @@ final class TextInjector {
     private var typingTask: Task<Void, Never>?
     private let source = CGEventSource(stateID: .combinedSessionState)
 
+    /// Marker on every synthetic event so event monitors can tell Grumble's
+    /// keystrokes apart from the user's.
+    private static let eventTag: Int64 = 0x4752_4D42  // "GRMB"
+
+    static func isOwnEvent(_ event: NSEvent) -> Bool {
+        event.cgEvent?.getIntegerValueField(.eventSourceUserData) == eventTag
+    }
+
+    /// Characters currently on screen from this injection session.
+    var typedCount: Int { typed.count }
+
     /// Seconds between keystrokes; deletions run a bit faster than typing.
     private static let typeDelay: UInt64 = 14_000_000
     private static let deleteDelay: UInt64 = 9_000_000
@@ -68,6 +79,7 @@ final class TextInjector {
         guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down)
         else { return }
         event.flags = []
+        event.setIntegerValueField(.eventSourceUserData, value: Self.eventTag)
         event.post(tap: .cghidEventTap)
     }
 
@@ -79,6 +91,7 @@ final class TextInjector {
                     keyboardEventSource: source, virtualKey: 0, keyDown: down)
             else { continue }
             event.flags = []
+            event.setIntegerValueField(.eventSourceUserData, value: Self.eventTag)
             event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
             event.post(tap: .cghidEventTap)
         }

@@ -39,6 +39,11 @@ final class DictationController {
     private var pumpTask: Task<Void, Never>?
     private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
     private var focusObserver: NSObjectProtocol?
+    private var userInputMonitor: Any?
+    /// Characters of the model transcript that are frozen on screen: the user
+    /// typed, pressed a key, or clicked since they were injected, so Grumble
+    /// must never backspace across them or re-inject them.
+    private var injectionFloor = 0
 
     private static let variantDefaultsKey = "modelVariant"
 
@@ -93,11 +98,12 @@ final class DictationController {
             await manager.setPartialTranscriptCallback { [weak self] text in
                 Task { @MainActor in
                     guard let self, self.state == .listening else { return }
-                    self.injector.update(to: Self.stablePrefix(of: text))
+                    self.inject(Self.stablePrefix(of: text))
                 }
             }
             try await manager.reset()
             injector.reset()
+            injectionFloor = 0
 
             let (stream, continuation) = AsyncStream.makeStream(of: AVAudioPCMBuffer.self)
             bufferContinuation = continuation
@@ -125,6 +131,7 @@ final class DictationController {
                 }
             )
             installFocusObserver()
+            installUserInputMonitor()
             state = .listening
         } catch {
             state = .idle
@@ -142,11 +149,18 @@ final class DictationController {
         teardownSession()
         do {
             let finalText = try await manager.finish()
-            injector.update(to: finalText)
+            inject(finalText)
         } catch {
             NSLog("Grumble: finish error: \(error)")
         }
         state = .idle
+    }
+
+    /// Inject transcript text, honoring the frozen prefix: only the part of
+    /// the transcript past the floor is diffed against the screen.
+    private func inject(_ text: String) {
+        guard text.count > injectionFloor else { return }
+        injector.update(to: String(text.dropFirst(injectionFloor)))
     }
 
     /// End the session without injecting any more text - used when focus
@@ -163,9 +177,36 @@ final class DictationController {
 
     private func teardownSession() {
         removeFocusObserver()
+        removeUserInputMonitor()
         audio.stop()
         bufferContinuation?.finish()
         bufferContinuation = nil
+    }
+
+    /// While listening, watch for the user's own keystrokes and clicks
+    /// (Grumble's synthetic events are tagged and ignored). Any real input
+    /// means the caret or text may have changed under us - freeze what's on
+    /// screen and only ever append from here on.
+    private func installUserInputMonitor() {
+        userInputMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            if event.type == .keyDown, TextInjector.isOwnEvent(event) { return }
+            Task { @MainActor in self?.userInterjected() }
+        }
+    }
+
+    private func removeUserInputMonitor() {
+        if let userInputMonitor {
+            NSEvent.removeMonitor(userInputMonitor)
+            self.userInputMonitor = nil
+        }
+    }
+
+    private func userInterjected() {
+        guard state == .listening else { return }
+        injectionFloor += injector.typedCount
+        injector.reset()
     }
 
     private func installFocusObserver() {
