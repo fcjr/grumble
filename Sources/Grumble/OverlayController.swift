@@ -10,6 +10,7 @@ final class OverlayController {
     private let label = NSTextField(labelWithString: "")
     private let dot = NSView()
     private let meter = LevelMeterView()
+    private var showToken = 0
 
     init() {
         panel = NSPanel(
@@ -58,7 +59,19 @@ final class OverlayController {
         panel.contentView = card
     }
 
+    /// Show a message briefly, then hide - unless something else has taken
+    /// over the overlay in the meantime.
+    func flash(_ text: String, color: NSColor, duration: TimeInterval = 2.2) {
+        show(text, color: color, pulsing: false)
+        let token = showToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self, self.showToken == token else { return }
+            self.hide()
+        }
+    }
+
     func show(_ text: String, color: NSColor, pulsing: Bool) {
+        showToken += 1
         label.attributedStringValue = .grumblePanelLabel(text, size: 12, color: .grumbleBone)
         dot.layer?.backgroundColor = color.cgColor
         dot.layer?.shadowColor = color.cgColor
@@ -77,6 +90,7 @@ final class OverlayController {
     }
 
     func hide() {
+        showToken += 1
         stopPulse()
         meter.setLevel(0)
         panel.orderOut(nil)

@@ -20,15 +20,19 @@ final class PermissionsController {
     private var micRow: PermissionRow!
     private var axRow: PermissionRow!
     private var hotKeyRow: PermissionRow!
+    private var modelRow: PermissionRow!
     private var loginCheckbox: NSButton!
     private var statusHint: NSTextField!
     private var doneButton: NSButton!
     private var wasReady = false
 
     /// Supplied by the app delegate so the window can show and change the
-    /// current dictation hotkey.
+    /// current dictation hotkey and reflect model/hotkey trouble.
     var hotKeyDisplay: (() -> String)?
     var onChangeHotKey: (() -> Void)?
+    var hotKeyConflict: (() -> Bool)?
+    var modelState: (() -> DictationController.ModelState)?
+    var onRetryModel: (() -> Void)?
 
     func showIfNeeded() {
         if !Self.allGranted() { show() }
@@ -87,6 +91,11 @@ final class PermissionsController {
             detail: ""
         ) { [weak self] in self?.onChangeHotKey?() }
 
+        modelRow = PermissionRow(
+            title: "Speech model",
+            detail: ""
+        ) { [weak self] in self?.onRetryModel?() }
+
         loginCheckbox = NSButton(
             checkboxWithTitle: "Start Grumble at login", target: self,
             action: #selector(loginToggled))
@@ -117,7 +126,7 @@ final class PermissionsController {
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
 
         let stack = NSStackView(views: [
-            heading, blurb, micRow, axRow, hotKeyRow, loginCheckbox, bottomBar,
+            heading, blurb, micRow, axRow, modelRow, hotKeyRow, loginCheckbox, bottomBar,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -139,6 +148,7 @@ final class PermissionsController {
             stack.widthAnchor.constraint(equalToConstant: 470),
             micRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
             axRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
+            modelRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
             hotKeyRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
             bottomBar.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
         ])
@@ -185,8 +195,30 @@ final class PermissionsController {
         axRow.update(granted: AXIsProcessTrusted(), buttonTitle: "Open Settings\u{2026}")
 
         let display = hotKeyDisplay?() ?? ""
-        hotKeyRow.setDetail("\(display) starts and stops dictation.")
-        hotKeyRow.showNeutral(buttonTitle: "Change\u{2026}")
+        if hotKeyConflict?() == true {
+            hotKeyRow.setDetail(
+                "\(display) is taken by another app \u{2014} choose a different hotkey.")
+            hotKeyRow.set(dotColor: .grumbleNeedle, buttonTitle: "Change\u{2026}")
+        } else {
+            hotKeyRow.setDetail("\(display) starts and stops dictation.")
+            hotKeyRow.set(dotColor: .grumbleAmber, buttonTitle: "Change\u{2026}")
+        }
+
+        switch modelState?() ?? .notLoaded {
+        case .notLoaded:
+            modelRow.setDetail("Loads shortly after launch.")
+            modelRow.set(dotColor: .grumbleAmber, buttonTitle: nil)
+        case .loading:
+            modelRow.setDetail("Downloading \u{2014} \(Self.modelCacheSizeMB()) MB so far.")
+            modelRow.set(dotColor: .grumbleAmber, buttonTitle: nil)
+        case .loaded:
+            modelRow.setDetail("Ready \u{2014} everything runs on this Mac.")
+            modelRow.set(dotColor: .systemGreen, buttonTitle: nil)
+        case .failed:
+            modelRow.setDetail("Download failed \u{2014} check your connection.")
+            modelRow.set(dotColor: .grumbleNeedle, buttonTitle: "Retry")
+        }
+
         loginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
         let ready = Self.allGranted()
@@ -208,6 +240,22 @@ final class PermissionsController {
 
     @objc private func donePressed() {
         close()
+    }
+
+    /// Size of FluidAudio's model cache, used as download progress (the
+    /// library exposes no progress callback).
+    private static func modelCacheSizeMB() -> Int {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("FluidAudio/Models")
+        guard let dir,
+            let files = FileManager.default.enumerator(
+                at: dir, includingPropertiesForKeys: [.fileSizeKey])
+        else { return 0 }
+        var total = 0
+        for case let url as URL in files {
+            total += (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0
+        }
+        return total / 1_000_000
     }
 
     @objc private func loginToggled() {
@@ -343,17 +391,19 @@ final class PermissionRow: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func update(granted: Bool, buttonTitle: String) {
-        dot.layer?.backgroundColor =
-            (granted ? NSColor.systemGreen : NSColor.grumbleNeedle).cgColor
-        button.isHidden = granted
-        if !granted { button.title = buttonTitle }
+        set(
+            dotColor: granted ? .systemGreen : .grumbleNeedle,
+            buttonTitle: granted ? nil : buttonTitle)
     }
 
-    /// Non-permission rows (e.g. the hotkey): amber dot, button always shown.
-    func showNeutral(buttonTitle: String) {
-        dot.layer?.backgroundColor = NSColor.grumbleAmber.cgColor
-        button.isHidden = false
-        button.title = buttonTitle
+    func set(dotColor: NSColor, buttonTitle: String?) {
+        dot.layer?.backgroundColor = dotColor.cgColor
+        if let buttonTitle {
+            button.isHidden = false
+            button.title = buttonTitle
+        } else {
+            button.isHidden = true
+        }
     }
 
     func setDetail(_ text: String) {

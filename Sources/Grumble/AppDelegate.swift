@@ -27,7 +27,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         (.parakeetEou160ms, "Parakeet EOU 120M — 160 ms (fastest, tiny)"),
     ]
 
+    private var hotKeyRegistered = true
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A DMG install and a dev build would otherwise both grab the hotkey
+        // and both type into the focused field.
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let others = NSRunningApplication.runningApplications(
+            withBundleIdentifier: Bundle.main.bundleIdentifier ?? "com.leftshift.grumble"
+        ).filter { $0.processIdentifier != ownPID }
+        if !others.isEmpty {
+            NSLog("Grumble: another instance is already running; quitting this one.")
+            NSApp.terminate(nil)
+            return
+        }
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.menu = buildMenu()
 
@@ -42,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotKey.onHotKey = { [weak self] in
             self?.dictation.toggle()
         }
-        hotKey.register(currentHotKey)
+        hotKeyRegistered = hotKey.register(currentHotKey)
 
         dictation.onPermissionsNeeded = { [weak self] in
             self?.permissions.show()
@@ -53,6 +67,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         permissions.onChangeHotKey = { [weak self] in
             self?.changeHotKey()
         }
+        permissions.hotKeyConflict = { [weak self] in
+            !(self?.hotKeyRegistered ?? true)
+        }
+        permissions.modelState = { [weak self] in
+            self?.dictation.modelState ?? .notLoaded
+        }
+        permissions.onRetryModel = { [weak self] in
+            self?.dictation.preload()
+        }
+        dictation.onModelStateChange = { [weak self] modelState in
+            if case .failed = modelState {
+                self?.permissions.show()
+            }
+        }
+        dictation.onSecureInput = { [weak self] in
+            self?.overlay.flash(
+                "Secure field \u{2014} dictation unavailable", color: .grumbleNeedle)
+        }
 
         // Launch at login defaults to on; register once so turning it off
         // later sticks.
@@ -62,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try? SMAppService.mainApp.register()
         }
 
-        if CommandLine.arguments.contains("--setup") {
+        if CommandLine.arguments.contains("--setup") || !hotKeyRegistered {
             permissions.show()
         } else {
             permissions.showIfNeeded()
@@ -114,6 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItem.target = self
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(loginItem)
+
+        let setupItem = NSMenuItem(
+            title: "Setup\u{2026}", action: #selector(openSetup), keyEquivalent: "")
+        setupItem.target = self
+        menu.addItem(setupItem)
 
         menu.addItem(.separator())
 
@@ -168,6 +205,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         dictation.toggle()
     }
 
+    @objc private func openSetup() {
+        permissions.show()
+    }
+
     @objc private func toggleLaunchAtLogin() {
         do {
             if SMAppService.mainApp.status == .enabled {
@@ -192,7 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.currentHotKey = newHotKey
                 newHotKey.save()
             }
-            self.hotKey.register(self.currentHotKey)
+            self.hotKeyRegistered = self.hotKey.register(self.currentHotKey)
             self.updateUI(for: self.lastState)
         }
     }

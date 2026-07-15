@@ -6,10 +6,12 @@ import Accelerate
 /// plus a coarse 0...1 input level per buffer for metering.
 final class AudioCapture {
     private let engine = AVAudioEngine()
+    private var configObserver: NSObjectProtocol?
 
     func start(
         onBuffer: @escaping (AVAudioPCMBuffer) -> Void,
-        onLevel: @escaping (Float) -> Void
+        onLevel: @escaping (Float) -> Void,
+        onConfigurationChange: @escaping () -> Void
     ) throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -25,6 +27,14 @@ final class AudioCapture {
             }
             onLevel(Self.level(of: buffer))
         }
+        // Fires when the input device changes or disappears (AirPods
+        // connecting, USB mic unplugged, ...) - the tap format is stale at
+        // that point, so the session must end.
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { _ in
+            onConfigurationChange()
+        }
         engine.prepare()
         try engine.start()
     }
@@ -39,6 +49,10 @@ final class AudioCapture {
     }
 
     func stop() {
+        if let configObserver {
+            NotificationCenter.default.removeObserver(configObserver)
+            self.configObserver = nil
+        }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
     }

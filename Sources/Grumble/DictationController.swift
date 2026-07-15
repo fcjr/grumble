@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import Carbon.HIToolbox
 import FluidAudio
 
 @MainActor
@@ -11,19 +12,33 @@ final class DictationController {
         case finishing
     }
 
+    enum ModelState: Equatable {
+        case notLoaded
+        case loading
+        case loaded
+        case failed(String)
+    }
+
     private(set) var state: State = .idle {
         didSet { onStateChange?(state) }
     }
+    private(set) var modelState: ModelState = .notLoaded {
+        didSet { onModelStateChange?(modelState) }
+    }
     var onStateChange: ((State) -> Void)?
+    var onModelStateChange: ((ModelState) -> Void)?
     var onLevel: ((Float) -> Void)?
     var onPermissionsNeeded: (() -> Void)?
+    var onSecureInput: (() -> Void)?
 
     private let audio = AudioCapture()
     private let injector = TextInjector()
     private var manager: (any StreamingAsrManager)?
     private var loadedVariant: StreamingModelVariant?
+    private var loadTask: Task<any StreamingAsrManager, Error>?
     private var pumpTask: Task<Void, Never>?
     private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
+    private var focusObserver: NSObjectProtocol?
 
     private static let variantDefaultsKey = "modelVariant"
 
@@ -49,14 +64,11 @@ final class DictationController {
     }
 
     /// Download and load the model in the background so the first dictation
-    /// doesn't stall on a multi-hundred-megabyte download.
+    /// doesn't stall on a multi-hundred-megabyte download. Failure lands in
+    /// modelState; retrying is just calling this again.
     func preload() {
         Task {
-            do {
-                _ = try await loadManagerIfNeeded()
-            } catch {
-                showAlert("Failed to load speech model: \(error.localizedDescription)")
-            }
+            _ = try? await loadManagerIfNeeded()
             if state == .loadingModel { state = .idle }
         }
     }
@@ -66,6 +78,13 @@ final class DictationController {
 
         guard PermissionsController.allGranted() else {
             onPermissionsNeeded?()
+            return
+        }
+
+        // Password fields turn on secure event input, which silently
+        // swallows synthetic keystrokes - say so instead of typing nothing.
+        guard !IsSecureEventInputEnabled() else {
+            onSecureInput?()
             return
         }
 
@@ -98,23 +117,29 @@ final class DictationController {
                 },
                 onLevel: { [weak self] level in
                     Task { @MainActor in self?.onLevel?(level) }
+                },
+                onConfigurationChange: { [weak self] in
+                    // Input device changed or vanished mid-session; wrap up
+                    // with the audio we have.
+                    Task { @MainActor in await self?.stop() }
                 }
             )
+            installFocusObserver()
             state = .listening
         } catch {
             state = .idle
-            showAlert("Failed to start dictation: \(error.localizedDescription)")
+            if case .failed = modelState {
+                onPermissionsNeeded?()
+            } else {
+                showAlert("Failed to start dictation: \(error.localizedDescription)")
+            }
         }
     }
 
     private func stop() async {
         guard state == .listening, let manager else { return }
         state = .finishing
-        audio.stop()
-        bufferContinuation?.finish()
-        bufferContinuation = nil
-        await pumpTask?.value
-        pumpTask = nil
+        teardownSession()
         do {
             let finalText = try await manager.finish()
             injector.update(to: finalText)
@@ -124,10 +149,54 @@ final class DictationController {
         state = .idle
     }
 
+    /// End the session without injecting any more text - used when focus
+    /// moves to another app, where the diff would mangle whatever is now
+    /// focused. Whatever was already typed stays put.
+    private func cancel() async {
+        guard state == .listening else { return }
+        state = .finishing
+        teardownSession()
+        try? await manager?.reset()
+        injector.reset()
+        state = .idle
+    }
+
+    private func teardownSession() {
+        removeFocusObserver()
+        audio.stop()
+        bufferContinuation?.finish()
+        bufferContinuation = nil
+    }
+
+    private func installFocusObserver() {
+        focusObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            Task { @MainActor in
+                guard let self, self.state == .listening else { return }
+                let activated =
+                    note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                if activated?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+                    await self.cancel()
+                }
+            }
+        }
+    }
+
+    private func removeFocusObserver() {
+        if let focusObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(focusObserver)
+            self.focusObserver = nil
+        }
+    }
+
     private func loadManagerIfNeeded() async throws -> any StreamingAsrManager {
         let wanted = variant
         if let manager, loadedVariant == wanted {
             return manager
+        }
+        if let loadTask {
+            return try await loadTask.value
         }
         if let old = manager {
             await old.cleanup()
@@ -135,14 +204,24 @@ final class DictationController {
             loadedVariant = nil
         }
         state = .loadingModel
-        do {
+        modelState = .loading
+        let task = Task { () throws -> any StreamingAsrManager in
             let newManager = wanted.createManager()
             try await newManager.loadModels()
+            return newManager
+        }
+        loadTask = task
+        do {
+            let newManager = try await task.value
+            loadTask = nil
             manager = newManager
             loadedVariant = wanted
+            modelState = .loaded
             return newManager
         } catch {
-            state = .idle
+            loadTask = nil
+            modelState = .failed(error.localizedDescription)
+            if state == .loadingModel { state = .idle }
             throw error
         }
     }

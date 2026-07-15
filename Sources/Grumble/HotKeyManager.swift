@@ -9,11 +9,14 @@ final class HotKeyManager {
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
 
-    func register(_ hotKey: HotKey) {
+    /// Returns false when the combo is already registered by another app
+    /// (e.g. Raycast also defaults to Option+Space).
+    @discardableResult
+    func register(_ hotKey: HotKey) -> Bool {
         unregister()
         installHandlerIfNeeded()
         let hotKeyID = EventHotKeyID(signature: OSType(0x4752_4D42), id: 1)  // "GRMB"
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             hotKey.keyCode,
             hotKey.carbonModifiers,
             hotKeyID,
@@ -21,6 +24,11 @@ final class HotKeyManager {
             0,
             &hotKeyRef
         )
+        if status != noErr {
+            hotKeyRef = nil
+            NSLog("Grumble: hotkey registration failed (status %d)", status)
+        }
+        return hotKeyRef != nil
     }
 
     func unregister() {
