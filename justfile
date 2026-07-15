@@ -10,6 +10,29 @@ version_flags := (if app_version != "" { "MARKETING_VERSION=" + app_version } el
 default:
     @just --list
 
+# Bump version (major|minor|patch), commit, and tag; push to release
+bump level="patch":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    current=$(grep -E 'MARKETING_VERSION:' project.yml | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+    build=$(grep -E 'CURRENT_PROJECT_VERSION:' project.yml | sed -E 's/.*"([0-9]+)".*/\1/')
+    IFS=. read -r major minor patch <<< "$current"
+    case "{{ level }}" in
+        major) major=$((major + 1)); minor=0; patch=0 ;;
+        minor) minor=$((minor + 1)); patch=0 ;;
+        patch) patch=$((patch + 1)) ;;
+        *) echo "usage: just bump [major|minor|patch]" >&2; exit 1 ;;
+    esac
+    next="$major.$minor.$patch"
+    next_build=$((build + 1))
+    sed -i '' -E "s/MARKETING_VERSION: \"$current\"/MARKETING_VERSION: \"$next\"/" project.yml
+    sed -i '' -E "s/CURRENT_PROJECT_VERSION: \"$build\"/CURRENT_PROJECT_VERSION: \"$next_build\"/" project.yml
+    git add project.yml
+    git commit -m "v$next"
+    git tag "v$next"
+    echo "Bumped $current -> $next (build $next_build)"
+    echo "Release with: git push && git push origin v$next"
+
 # Generate the Xcode project
 generate:
     xcodegen generate
