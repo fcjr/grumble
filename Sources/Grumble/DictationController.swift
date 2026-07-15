@@ -40,6 +40,13 @@ final class DictationController {
     private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
     private var focusObserver: NSObjectProtocol?
     private var userInputMonitor: Any?
+    private var lastPartialText = ""
+    private var settleTask: Task<Void, Never>?
+    /// How long the transcript must sit unchanged before the held-back
+    /// frontier word is flushed to the screen.
+    private static let settleDelay: UInt64 = 1_500_000_000
+    /// Prolonged silence ends the session entirely.
+    private static let autoStopDelay: UInt64 = 60_000_000_000
     /// Characters of the model transcript that are frozen on screen: the user
     /// typed, pressed a key, or clicked since they were injected, so Grumble
     /// must never backspace across them or re-inject them.
@@ -97,13 +104,17 @@ final class DictationController {
             let manager = try await loadManagerIfNeeded()
             await manager.setPartialTranscriptCallback { [weak self] text in
                 Task { @MainActor in
-                    guard let self, self.state == .listening else { return }
+                    guard let self, self.state == .listening, text != self.lastPartialText
+                    else { return }
+                    self.lastPartialText = text
                     self.inject(Self.stablePrefix(of: text))
+                    self.scheduleSettleFlush()
                 }
             }
             try await manager.reset()
             injector.reset()
             injectionFloor = 0
+            lastPartialText = ""
 
             let (stream, continuation) = AsyncStream.makeStream(of: AVAudioPCMBuffer.self)
             bufferContinuation = continuation
@@ -178,9 +189,26 @@ final class DictationController {
     private func teardownSession() {
         removeFocusObserver()
         removeUserInputMonitor()
+        settleTask?.cancel()
+        settleTask = nil
         audio.stop()
         bufferContinuation?.finish()
         bufferContinuation = nil
+    }
+
+    /// When the transcript stops changing (speaker paused), flush the
+    /// held-back frontier word after a short settle, and end the session
+    /// after a minute of continued silence.
+    private func scheduleSettleFlush() {
+        settleTask?.cancel()
+        settleTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.settleDelay)
+            guard let self, !Task.isCancelled, self.state == .listening else { return }
+            self.inject(self.lastPartialText)
+            try? await Task.sleep(nanoseconds: Self.autoStopDelay - Self.settleDelay)
+            guard !Task.isCancelled, self.state == .listening else { return }
+            await self.stop()
+        }
     }
 
     /// While listening, watch for the user's own keystrokes and clicks
