@@ -129,15 +129,19 @@ jobs:
           git diff --cached --quiet || git commit -m "grumble $VERSION"
           git push
 
-      - name: Commit updated appcast to main
+      - name: Commit updated appcast and nix pin to main
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # SRI hash of the same zip the release uploaded, for the nix flake.
+          sha="sha256-$(openssl dgst -sha256 -binary "build/updates/Grumble-$VERSION.zip" | base64)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git checkout -f -B main origin/main
           cp "$RUNNER_TEMP/appcast.xml" apps/web/public/desktop/darwin/appcast.xml
-          git add apps/web/public/desktop/darwin/appcast.xml
-          git diff --cached --quiet || git commit -m "Update appcast for $GITHUB_REF_NAME"
+          printf '{ "version": "%s", "sha256": "%s" }\n' "$VERSION" "$sha" > nix/version.json
+          git add apps/web/public/desktop/darwin/appcast.xml nix/version.json
+          git diff --cached --quiet || git commit -m "Update appcast and nix pin for $GITHUB_REF_NAME"
           git push origin main
 
       - name: Deploy website

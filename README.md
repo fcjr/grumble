@@ -14,6 +14,38 @@ Requires macOS 14+. Install with [Homebrew](https://brew.sh):
 brew install --cask fcjr/fcjr/grumble
 ```
 
+Or with [Nix](https://nixos.org) flakes:
+
+```sh
+nix profile install github:fcjr/grumble
+```
+
+Or in a [nix-darwin](https://github.com/nix-darwin/nix-darwin) or
+[home-manager](https://github.com/nix-community/home-manager) flake config,
+add the input and package:
+
+```nix
+{
+  inputs.grumble.url = "github:fcjr/grumble";
+
+  # then, in a nix-darwin module (links the app into /Applications/Nix Apps):
+  { pkgs, inputs, ... }: {
+    environment.systemPackages = [
+      inputs.grumble.packages.${pkgs.system}.default
+    ];
+  }
+
+  # or in a home-manager module:
+  { pkgs, inputs, ... }: {
+    home.packages = [ inputs.grumble.packages.${pkgs.system}.default ];
+  }
+}
+```
+
+Note that Nix installs are updated through Nix, not Sparkle: the in-app
+updater can't modify the read-only Nix store, so update by bumping the
+flake input (`nix flake update grumble`).
+
 Or download [Grumble.dmg](https://github.com/fcjr/grumble/releases/latest/download/Grumble.dmg)
 from the [latest release](https://github.com/fcjr/grumble/releases/latest) and
 drag Grumble to Applications.
@@ -56,8 +88,8 @@ Push a tag like `v0.2.0` and CI does the rest: builds and signs the app
 (version taken from the tag), notarizes the DMG, uploads the DMG and the
 Sparkle update zip to a GitHub release, publishes the Homebrew cask to
 [fcjr/homebrew-fcjr](https://github.com/fcjr/homebrew-fcjr), regenerates the
-signed appcast at `grumble.computer/desktop/darwin/appcast.xml`, commits it,
-and redeploys the site.
+signed appcast at `grumble.computer/desktop/darwin/appcast.xml`, commits it
+together with the flake's `nix/version.json` pin, and redeploys the site.
 
 Repository secrets used: `MACOS_CERTIFICATE_P12` (base64 Developer ID .p12),
 `MACOS_CERTIFICATE_PASSWORD`, `APP_STORE_CONNECT_API_KEY` (.p8 contents),

@@ -3,6 +3,7 @@ Resources/Info.plist
 build/
 DerivedData/
 .DS_Store
+result
 node_modules/
 dist/
 .wrangler/
