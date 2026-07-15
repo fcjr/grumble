@@ -1,0 +1,37 @@
+<svg width="620" height="420" viewBox="0 0 620 420" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="faceplate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#241E18"/>
+      <stop offset="1" stop-color="#15110E"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFC873"/>
+      <stop offset="1" stop-color="#E09A2F"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="620" height="420" fill="url(#faceplate)"/>
+
+  <!-- the settling waveform, centered above the icons -->
+  <g fill="none" stroke-linecap="round" stroke-width="7">
+    <path d="M260,50 q12.5,-26 25,0 q12.5,23 25,0 q12.5,-28 25,0 q12.5,26 25,0" stroke="url(#amber)"/>
+    <path d="M260,68 q12.5,-13 25,0 q12.5,12 25,0 q12.5,-14 25,0" stroke="#B98430"/>
+    <path d="M260,86 L318,86" stroke="#EFE6D6"/>
+  </g>
+  <circle cx="332" cy="86" r="4.5" fill="#D4553A"/>
+
+  <!-- drag path from app to Applications -->
+  <g stroke="#8A6B33" stroke-width="5" stroke-linecap="round" fill="none">
+    <path d="M248,205 L368,205"/>
+    <path d="M368,205 l-14,-9"/>
+    <path d="M368,205 l-14,9"/>
+  </g>
+
+  <!-- engraved label plates: Finder draws icon labels in black, so give
+       them bone plates to sit on, like printed labels on a faceplate -->
+  <rect x="104" y="269" width="112" height="29" rx="14.5" fill="#EFE6D6"/>
+  <rect x="386" y="269" width="148" height="29" rx="14.5" fill="#EFE6D6"/>
+
+  <!-- hairline frame -->
+  <rect x="0.5" y="0.5" width="619" height="419" fill="none" stroke="#FFFFFF" stroke-opacity="0.06"/>
+</svg>

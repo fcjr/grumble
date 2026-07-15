@@ -33,9 +33,19 @@ pkg: generate
     codesign --force --options runtime --timestamp \
         --sign "{{ sign_identity }}" build/pkg/dmg/Grumble.app
     codesign --verify --strict --deep build/pkg/dmg/Grumble.app
-    ln -s /Applications build/pkg/dmg/Applications
-    hdiutil create -volname Grumble -srcfolder build/pkg/dmg -ov -format UDZO \
-        build/Grumble.dmg
+    rm -f build/Grumble.dmg
+    create-dmg \
+        --volname "Grumble" \
+        --volicon Resources/AppIcon.icns \
+        --background Design/dmg-background.tiff \
+        --window-pos 200 150 \
+        --window-size 620 420 \
+        --icon-size 128 \
+        --icon "Grumble.app" 160 205 \
+        --hide-extension "Grumble.app" \
+        --app-drop-link 460 205 \
+        --no-internet-enable \
+        build/Grumble.dmg build/pkg/dmg
     codesign --force --timestamp --sign "{{ sign_identity }}" build/Grumble.dmg
     @echo "Signed DMG at build/Grumble.dmg"
 

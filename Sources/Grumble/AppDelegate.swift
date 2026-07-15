@@ -107,12 +107,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             stateItem.title = "Listening\u{2026}"
             toggleItem.title = "Stop Dictation  (\(currentHotKey.displayString))"
             toggleItem.isEnabled = true
-            tint = .grumbleNeedle
+            tint = .grumbleAmber
             overlay.show("Listening", color: .grumbleNeedle, pulsing: true)
         case .finishing:
             stateItem.title = "Finishing\u{2026}"
             toggleItem.isEnabled = false
-            tint = .grumbleAmber
+            tint = .tertiaryLabelColor
             overlay.show("Finishing", color: .grumbleAmber, pulsing: false)
         }
         if let button = statusItem.button {
