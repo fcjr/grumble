@@ -117,11 +117,37 @@ func ensureVersion() -> String {
                 ],
                 "relationships": ["app": ["data": ["type": "apps", "id": appID]]],
             ]
-        ])
-    guard let data = created["data"] as? [String: Any], let id = data["id"] as? String else {
-        fail("could not create version \(version): \(created)")
+        ], allowedErrors: [409, 422])
+    if let data = created["data"] as? [String: Any], let id = data["id"] as? String {
+        print("created version \(version) (\(id))")
+        return id
     }
-    print("created version \(version) (\(id))")
+    // Only one editable version can exist per platform. If a previous
+    // version was never submitted (or was rejected), rename it in place
+    // instead of creating a new one.
+    let editableStates = [
+        "PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED",
+        "METADATA_REJECTED", "INVALID_BINARY",
+    ].joined(separator: ",")
+    let editable = items(
+        api(
+            "GET",
+            "/v1/apps/\(appID)/appStoreVersions?filter[platform]=MAC_OS&filter[appStoreState]=\(editableStates)&limit=1"
+        ))
+    guard let stale = editable.first, let id = stale["id"] as? String else {
+        fail("cannot create version \(version) and no editable version to rename: \(created)")
+    }
+    let old =
+        (stale["attributes"] as? [String: Any])?["versionString"] as? String ?? "unknown"
+    _ = api(
+        "PATCH", "/v1/appStoreVersions/\(id)",
+        body: [
+            "data": [
+                "type": "appStoreVersions", "id": id,
+                "attributes": ["versionString": version],
+            ]
+        ])
+    print("renamed unsubmitted version \(old) -> \(version) (\(id))")
     return id
 }
 
