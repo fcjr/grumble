@@ -35,6 +35,18 @@ body {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 0.85em;
   color: var(--color-bone);
+  transition:
+    transform 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.keycap-pressed {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+  margin-bottom: 1px;
+  border-color: rgb(232 163 61 / 0.5);
+  color: var(--color-amber);
 }
 
 .wave-draw {
@@ -64,8 +76,51 @@ body {
   }
 }
 
+.demo-cursor {
+  animation: cursor-blink 1.1s steps(2, start) infinite;
+}
+@keyframes cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.rec-dot-live {
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.demo-live .wave-draw {
+  stroke-dashoffset: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wave-breathe 0.7s ease-in-out infinite alternate;
+}
+.demo-live .wave-draw-2 {
+  animation-duration: 0.55s;
+  animation-delay: 0.1s;
+}
+.demo-live .wave-draw-3 {
+  animation: none;
+}
+@keyframes wave-breathe {
+  from {
+    transform: scaleY(0.75);
+  }
+  to {
+    transform: scaleY(1.2);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .wave-draw {
+  .wave-draw,
+  .demo-live .wave-draw,
+  .demo-cursor,
+  .rec-dot-live {
     animation: none;
     stroke-dashoffset: 0;
   }

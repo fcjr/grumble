@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { DictationDemo } from "../components/DictationDemo";
+import { Mark } from "../components/Mark";
 
 export const Route = createFileRoute("/")({
   component: Landing,
@@ -6,38 +8,6 @@ export const Route = createFileRoute("/")({
 
 const RELEASES = "https://github.com/fcjr/grumble/releases/latest";
 const REPO = "https://github.com/fcjr/grumble";
-
-function Mark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="240 330 540 380" className={className} aria-hidden="true">
-      <path
-        className="wave-draw"
-        d="M280,412 q38.5,-100 77,0 q38.5,90 77,0 q38.5,-110 77,0 q38.5,100 77,0 q38.5,-80 77,0 q38.5,80 77,0"
-        fill="none"
-        stroke="#E8A33D"
-        strokeWidth="46"
-        strokeLinecap="round"
-      />
-      <path
-        className="wave-draw wave-draw-2"
-        d="M280,542 q38.5,-52 77,0 q38.5,48 77,0 q38.5,-56 77,0 q38.5,44 77,0"
-        fill="none"
-        stroke="#B98430"
-        strokeWidth="46"
-        strokeLinecap="round"
-      />
-      <path
-        className="wave-draw wave-draw-3"
-        d="M280,656 L616,656"
-        fill="none"
-        stroke="#EFE6D6"
-        strokeWidth="46"
-        strokeLinecap="round"
-      />
-      <circle className="dot-appear" cx="692" cy="656" r="27" fill="#D4553A" />
-    </svg>
-  );
-}
 
 function Landing() {
   return (
@@ -69,7 +39,7 @@ function Landing() {
             <p className="mt-6 max-w-md text-lg leading-relaxed text-bone-dim">
               Press <span className="keycap">⌥+Space</span>, talk, and watch
               your words stream live into whatever text field has focus. All
-              transcription happens on your Mac — no audio ever leaves it.
+              transcription happens on your Mac. No audio ever leaves it.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <a
@@ -83,18 +53,18 @@ function Landing() {
               </span>
             </div>
           </div>
-          <Mark className="mx-auto w-64 md:w-80" />
+          <DictationDemo />
         </section>
 
         <section className="grid gap-4 pb-16 md:grid-cols-3">
           {[
             {
               title: "Private by construction",
-              body: "NVIDIA's Parakeet model runs on the Neural Engine via CoreML. Your voice is transcribed on-device — nothing is sent anywhere, ever.",
+              body: "NVIDIA's Parakeet model runs on the Neural Engine via CoreML. Your voice is transcribed on-device. Nothing is sent anywhere, ever.",
             },
             {
               title: "Streams as you speak",
-              body: "Words land in the text field while you're still talking. When the model revises, only the changed suffix is retyped — like watching yourself type, but faster.",
+              body: "Words land in the text field while you're still talking. When the model revises, only the changed suffix is retyped. It's like watching yourself type, but faster.",
             },
             {
               title: "Works in every app",
@@ -103,7 +73,7 @@ function Landing() {
           ].map((feature) => (
             <div
               key={feature.title}
-              className="rounded-2xl border border-white/8 bg-faceplate p-6"
+              className="rounded-2xl border border-white/8 bg-faceplate p-6 transition-[transform,border-color] duration-300 hover:-translate-y-1 hover:border-amber/25 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
             >
               <h2 className="panel-label mb-3 text-lg text-bone">
                 {feature.title}
@@ -118,7 +88,7 @@ function Landing() {
         <section className="mb-16 rounded-2xl border border-white/8 bg-faceplate px-6 py-5">
           <p className="text-center text-sm text-bone-dim">
             First launch downloads the speech model once (~600 MB), then
-            Grumble works entirely offline. Free and open source —{" "}
+            Grumble works entirely offline. Free and open source, so you can{" "}
             <a
               href={REPO}
               className="text-amber transition-colors hover:text-amber-hi"
