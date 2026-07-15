@@ -21,7 +21,9 @@ final class PermissionsController {
     private var axRow: PermissionRow!
     private var hotKeyRow: PermissionRow!
     private var loginCheckbox: NSButton!
-    private var closeWhenGranted = false
+    private var statusHint: NSTextField!
+    private var doneButton: NSButton!
+    private var wasReady = false
 
     /// Supplied by the app delegate so the window can show and change the
     /// current dictation hotkey.
@@ -95,16 +97,21 @@ final class PermissionsController {
                 .foregroundColor: NSColor.grumbleBone,
             ])
 
-        let footer = NSTextField(
-            labelWithString: "This window closes itself once both are on.")
-        footer.font = .systemFont(ofSize: 11)
-        footer.textColor = .grumbleBoneDim
+        statusHint = NSTextField(wrappingLabelWithString: "")
+        statusHint.font = .systemFont(ofSize: 11)
+        statusHint.textColor = .grumbleBoneDim
+        statusHint.preferredMaxLayoutWidth = 230
 
         let quitButton = NSButton(
             title: "Quit Grumble", target: NSApp, action: #selector(NSApplication.terminate(_:)))
         quitButton.bezelStyle = .rounded
 
-        let bottomBar = NSStackView(views: [footer, NSView(), quitButton])
+        doneButton = NSButton(title: "Done", target: self, action: #selector(donePressed))
+        doneButton.bezelStyle = .rounded
+        doneButton.keyEquivalent = "\r"
+        doneButton.isHidden = true
+
+        let bottomBar = NSStackView(views: [statusHint, NSView(), quitButton, doneButton])
         bottomBar.orientation = .horizontal
         bottomBar.alignment = .centerY
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
@@ -137,7 +144,6 @@ final class PermissionsController {
         ])
 
         self.window = window
-        closeWhenGranted = !Self.allGranted()
         refresh()
         content.layoutSubtreeIfNeeded()
         window.setContentSize(content.fittingSize)
@@ -178,19 +184,30 @@ final class PermissionsController {
         )
         axRow.update(granted: AXIsProcessTrusted(), buttonTitle: "Open Settings\u{2026}")
 
-        if let display = hotKeyDisplay?() {
-            hotKeyRow.setDetail("\(display) starts and stops dictation.")
-        }
+        let display = hotKeyDisplay?() ?? ""
+        hotKeyRow.setDetail("\(display) starts and stops dictation.")
         hotKeyRow.showNeutral(buttonTitle: "Change\u{2026}")
         loginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
-        if closeWhenGranted, Self.allGranted() {
-            pollTimer?.invalidate()
-            pollTimer = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                self?.close()
-            }
+        let ready = Self.allGranted()
+        doneButton.isHidden = !ready
+        statusHint.stringValue =
+            ready
+            ? "All set \u{2014} press \(display) in any text field and talk."
+            : "Allow both, then you're ready to dictate."
+
+        // The last grant usually happens while System Settings is frontmost
+        // (our window sits below it) - surface the finished state.
+        if ready, !wasReady, let window {
+            window.level = .floating
+            window.orderFrontRegardless()
+            NSApp.activate(ignoringOtherApps: true)
         }
+        wasReady = ready
+    }
+
+    @objc private func donePressed() {
+        close()
     }
 
     @objc private func loginToggled() {
