@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { DictationDemo } from "../components/DictationDemo";
 import { Mark } from "../components/Mark";
 
@@ -9,6 +10,33 @@ export const Route = createFileRoute("/")({
 const DOWNLOAD =
   "https://github.com/fcjr/grumble/releases/latest/download/Grumble.dmg";
 const REPO = "https://github.com/fcjr/grumble";
+
+const BREW_COMMAND = "brew install --cask fcjr/fcjr/grumble";
+
+function BrewCommand() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="Copy Homebrew install command"
+      onClick={() => {
+        navigator.clipboard.writeText(BREW_COMMAND).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      className="group mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-white/8 bg-faceplate px-4 py-2.5 text-left font-mono text-sm text-bone-dim transition-colors hover:border-amber/25 focus-visible:border-amber/25"
+    >
+      <span>
+        <span className="select-none text-amber-dim">$ </span>
+        {BREW_COMMAND}
+      </span>
+      <span className="panel-label text-xs text-amber-dim transition-colors group-hover:text-amber">
+        {copied ? "Copied!" : "Copy"}
+      </span>
+    </button>
+  );
+}
 
 function Landing() {
   return (
@@ -54,6 +82,7 @@ function Landing() {
                 macOS 14+ · Apple Silicon
               </span>
             </div>
+            <BrewCommand />
           </div>
           <DictationDemo />
         </section>

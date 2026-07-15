@@ -6,6 +6,18 @@ stop. All transcription happens on-device via
 [FluidAudio](https://github.com/FluidInference/FluidAudio) and NVIDIA's
 Parakeet models running on CoreML — no audio ever leaves your Mac.
 
+## Install
+
+Requires macOS 14+. Install with [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask fcjr/fcjr/grumble
+```
+
+Or download [Grumble.dmg](https://github.com/fcjr/grumble/releases/latest/download/Grumble.dmg)
+from the [latest release](https://github.com/fcjr/grumble/releases/latest) and
+drag Grumble to Applications.
+
 ## How it works
 
 - A menu bar app (no Dock icon) registers a global ⌥+Space hotkey
@@ -42,14 +54,17 @@ just clean   # remove generated project and build artifacts
 
 Push a tag like `v0.2.0` and CI does the rest: builds and signs the app
 (version taken from the tag), notarizes the DMG, uploads the DMG and the
-Sparkle update zip to a GitHub release, regenerates the signed appcast at
-`grumble.computer/desktop/darwin/appcast.xml`, commits it, and redeploys the
-site.
+Sparkle update zip to a GitHub release, publishes the Homebrew cask to
+[fcjr/homebrew-fcjr](https://github.com/fcjr/homebrew-fcjr), regenerates the
+signed appcast at `grumble.computer/desktop/darwin/appcast.xml`, commits it,
+and redeploys the site.
 
 Repository secrets used: `MACOS_CERTIFICATE_P12` (base64 Developer ID .p12),
 `MACOS_CERTIFICATE_PASSWORD`, `APP_STORE_CONNECT_API_KEY` (.p8 contents),
 `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`,
-`SPARKLE_PRIVATE_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+`SPARKLE_PRIVATE_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+`RELEASER_APP_ID` and `RELEASER_APP_PRIVATE_KEY` (GitHub App with write
+access to the tap).
 
 ## Models
 

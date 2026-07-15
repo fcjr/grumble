@@ -98,6 +98,37 @@ jobs:
             --title "Grumble $VERSION" \
             --generate-notes
 
+      # Fill the cask template with this release's version + .dmg sha256 and
+      # push it to the tap, so `brew install --cask fcjr/fcjr/grumble` tracks
+      # the release. The token comes from the releaser GitHub App, which is
+      # installed on fcjr/homebrew-fcjr.
+      - name: Mint tap token
+        id: tap-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: fcjr
+          repositories: homebrew-fcjr
+
+      - name: Publish the Homebrew cask
+        env:
+          TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          sha="$(shasum -a 256 "build/Grumble-$VERSION.dmg" | awk '{print $1}')"
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/fcjr/homebrew-fcjr.git" "$RUNNER_TEMP/tap"
+          mkdir -p "$RUNNER_TEMP/tap/Casks"
+          sed -e "s/VERSION_PLACEHOLDER/$VERSION/" -e "s/SHA256_PLACEHOLDER/$sha/" \
+            homebrew/grumble.rb > "$RUNNER_TEMP/tap/Casks/grumble.rb"
+          cd "$RUNNER_TEMP/tap"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/grumble.rb
+          git diff --cached --quiet || git commit -m "grumble $VERSION"
+          git push
+
       - name: Commit updated appcast to main
         run: |
           git config user.name "github-actions[bot]"
