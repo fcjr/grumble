@@ -36,10 +36,13 @@ enum AudioInputDevices {
         }
     }
 
-    /// All devices currently able to capture audio.
+    /// All devices currently able to capture audio. System-private aggregates
+    /// (e.g. the "CADefaultDeviceAggregate" AVAudioEngine conjures around the
+    /// default devices) are implementation details, not user choices - only
+    /// user-created aggregates are listed.
     static func available() -> [Device] {
         allDeviceIDs().compactMap { id in
-            guard hasInput(id),
+            guard hasInput(id), !isPrivateAggregate(id),
                 let uid = stringProperty(id, kAudioDevicePropertyDeviceUID),
                 let name = stringProperty(id, kAudioObjectPropertyName)
             else { return nil }
@@ -91,6 +94,25 @@ enum AudioInputDevices {
         let list = UnsafeMutableAudioBufferListPointer(
             buffer.assumingMemoryBound(to: AudioBufferList.self))
         return list.reduce(0) { $0 + Int($1.mNumberChannels) } > 0
+    }
+
+    private static func isPrivateAggregate(_ id: AudioDeviceID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &transport) == noErr,
+            transport == kAudioDeviceTransportTypeAggregate
+        else { return false }
+        address.mSelector = kAudioAggregateDevicePropertyComposition
+        var composition: Unmanaged<CFPropertyList>?
+        size = UInt32(MemoryLayout<Unmanaged<CFPropertyList>?>.size)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &composition) == noErr,
+            let dict = composition?.takeRetainedValue() as? [String: Any]
+        else { return false }
+        return (dict[kAudioAggregateDeviceIsPrivateKey] as? Bool) ?? false
     }
 
     private static func stringProperty(
