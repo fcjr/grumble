@@ -1,3 +1,6 @@
+# typed: strict
+# frozen_string_literal: true
+
 # Template for the Grumble cask. release.yml fills in the version and sha256
 # from the built .dmg and pushes the result to fcjr/homebrew-fcjr.
 cask "grumble" do
@@ -7,11 +10,10 @@ cask "grumble" do
   url "https://github.com/fcjr/grumble/releases/download/v#{version}/Grumble-#{version}.dmg"
   name "Grumble"
   desc "Local, on-device dictation"
-  homepage "https://grumble.computer"
-
-  depends_on macos: ">= :sonoma"
+  homepage "https://grumble.computer/"
 
   auto_updates true
+  depends_on macos: :sonoma
 
   app "Grumble.app"
 
