@@ -14,15 +14,23 @@ const SECTIONS = [
   },
   {
     title: "Your voice stays on your Mac",
-    body: "Audio from your microphone is transcribed entirely on-device using a local speech model. Audio is processed in memory, is never written to disk, and never leaves your computer. Transcribed text is typed directly into the app you are using; Grumble keeps no copy of it.",
+    body: "Audio from your microphone is transcribed entirely on-device using a local speech model. During dictation, audio is processed in memory, is never written to disk, and never leaves your computer. Transcribed text is typed directly into the app you are using; Grumble keeps no copy of it.",
+  },
+  {
+    title: "Meetings never leave either",
+    body: "When Grumble records a meeting, the audio is saved to a folder on your Mac and the transcript and summary go into a local database. Recording, speaker separation, transcription, and summarization all run on-device. Nothing is uploaded, and no meeting data is shared with us or anyone else.",
+  },
+  {
+    title: "You control meeting recordings",
+    body: "Automatic recording can be turned off entirely, or allowed and denied per app. Recorded audio can be kept forever, aged out after 7 or 30 days, or deleted as soon as the transcript is made, and any meeting can be deleted outright at any time.",
   },
   {
     title: "Network access",
-    body: "Grumble connects to the network for exactly one purpose: downloading the speech model from Hugging Face on first launch (or when you switch models). The direct-download version also checks grumble.computer for app updates via Sparkle; the Mac App Store version does not, since the App Store handles updates. Neither request includes any personal information.",
+    body: "Grumble connects to the network to download models from Hugging Face: the speech model on first launch (or when you switch models), and the optional meeting summarization model only if you turn summaries on. The direct-download version also checks grumble.computer for app updates via Sparkle; the Mac App Store version does not, since the App Store handles updates. None of these requests include any personal information.",
   },
   {
     title: "Permissions",
-    body: "Grumble asks for microphone access to hear you and accessibility access to type into the focused text field. Both are used only while dictation is active and only for those purposes.",
+    body: "Grumble asks for microphone access to hear you and accessibility access to type into the focused text field. Meeting recording additionally uses macOS system audio recording so the other side of a call can be captured, and notifications if you want to be asked before a browser meeting is recorded. Each is used only for its stated purpose.",
   },
 ] as const;
 
@@ -84,7 +92,7 @@ function Privacy() {
         </section>
 
         <p className="mt-8 text-center text-xs text-bone-dim">
-          Last updated July 15, 2026
+          Last updated August 4, 2026
         </p>
       </main>
 

@@ -116,6 +116,12 @@ just clean   # remove generated project and build artifacts
 3. **Accessibility** — required so Grumble can type into other apps. macOS
    will prompt; enable Grumble under System Settings → Privacy & Security →
    Accessibility.
+4. **System audio** — needed for meetings, so the far side of a call can be
+   captured. The first recording triggers the prompt; enable Grumble under
+   System Settings → Privacy & Security → Screen & System Audio Recording.
+   Recording can't start without it.
+5. **Summarization model** — optional, and only downloaded (~2.3 GB) when you
+   turn on meeting summaries from the Meetings window.
 
 ## Releasing
 

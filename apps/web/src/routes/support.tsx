@@ -22,7 +22,32 @@ const FAQS = [
   {
     question: "Does my audio ever leave my Mac?",
     answer:
-      "No. Transcription runs entirely on-device using a local speech model. Audio is processed in memory, never written to disk, and never sent anywhere. See the privacy policy for details.",
+      "No. Dictation and meeting transcription both run entirely on-device using local models. Dictation audio is processed in memory and never written to disk. Meeting recordings are saved on your Mac, under Application Support, and are never sent anywhere. See the privacy policy for details.",
+  },
+  {
+    question: "How do I record a meeting?",
+    answer:
+      "Usually you do not have to do anything: when a meeting app such as Zoom, Teams, Webex, Slack, Discord, or FaceTime starts using your microphone, Grumble begins recording on its own. Browser meetings, like Google Meet, send a notification asking first. You can also start and stop a recording yourself from the menu bar icon with Record Meeting.",
+  },
+  {
+    question: "Grumble says it could not start the meeting recording.",
+    answer:
+      "Recording a meeting captures the other side of the call through system audio, which needs its own permission. Open System Settings, go to Privacy & Security, then Screen & System Audio Recording, enable Grumble, and restart the app. Meeting recording also requires macOS 14.4 or later.",
+  },
+  {
+    question: "How do I stop Grumble from recording certain apps?",
+    answer:
+      "Open Meetings… from the menu bar icon and go to Meeting Settings. Each detected app can be set to record automatically, ask first, or never record. To turn detection off completely, uncheck Auto-Record Meetings in the menu bar or Detect meetings automatically in Meeting Settings.",
+  },
+  {
+    question: "Where do meeting recordings live, and how do I delete them?",
+    answer:
+      "Audio is written to ~/Library/Application Support/Grumble/Meetings and transcripts go into a local database beside it. Any meeting can be removed with Delete Meeting and Audio in the Meetings window. Under Meeting Settings, Keep raw audio decides whether recordings are kept forever, aged out after 7 or 30 days, or deleted as soon as the transcript is ready. Transcripts and summaries stay until you delete the meeting.",
+  },
+  {
+    question: "Why do meeting titles and summaries need another download?",
+    answer:
+      "Summaries are optional and use a separate local language model, roughly 2.3 GB, which is only downloaded when you turn them on from the Meetings window. Transcripts with speaker labels work without it. Once downloaded, summarization runs offline like everything else.",
   },
   {
     question: "Why does Grumble download something on first launch?",
@@ -32,7 +57,7 @@ const FAQS = [
   {
     question: "What Macs does Grumble support?",
     answer:
-      "Grumble requires macOS 14 or later on Apple Silicon (M1 or newer). Intel Macs are not supported.",
+      "Grumble requires macOS 14 or later on Apple Silicon (M1 or newer). Intel Macs are not supported. Meeting recording additionally needs macOS 14.4 or later, which is where the system audio capture it relies on was introduced.",
   },
   {
     question: "How do I update Grumble?",

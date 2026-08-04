@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { DictationDemo } from "../components/DictationDemo";
 import { Mark } from "../components/Mark";
+import { MeetingDemo } from "../components/MeetingDemo";
 
 export const Route = createFileRoute("/")({
   component: Landing,
@@ -46,12 +47,20 @@ function Landing() {
           <Mark className="h-7 w-9" />
           <span className="panel-label text-lg text-bone">Grumble</span>
         </div>
-        <a
-          href={REPO}
-          className="panel-label text-sm text-bone-dim transition-colors hover:text-amber focus-visible:text-amber"
-        >
-          GitHub
-        </a>
+        <nav className="flex items-center gap-6">
+          <a
+            href="#meetings"
+            className="panel-label text-sm text-bone-dim transition-colors hover:text-amber focus-visible:text-amber"
+          >
+            Meetings
+          </a>
+          <a
+            href={REPO}
+            className="panel-label text-sm text-bone-dim transition-colors hover:text-amber focus-visible:text-amber"
+          >
+            GitHub
+          </a>
+        </nav>
       </header>
 
       <main className="mx-auto max-w-5xl px-6">
@@ -116,10 +125,59 @@ function Landing() {
           ))}
         </section>
 
+        <section
+          id="meetings"
+          className="grid items-center gap-12 border-t border-white/8 py-16 md:grid-cols-[1fr_1.1fr] md:py-24"
+        >
+          <div className="order-2 md:order-1">
+            <MeetingDemo />
+          </div>
+          <div className="order-1 md:order-2">
+            <p className="panel-label mb-4 text-sm text-amber">Meetings</p>
+            <h2 className="panel-label text-5xl leading-none text-bone md:text-6xl">
+              It takes
+              <br />
+              the notes too.
+            </h2>
+            <p className="mt-6 max-w-md text-lg leading-relaxed text-bone-dim">
+              When Zoom, Teams, or a Meet tab picks up your microphone, Grumble
+              starts recording. Both sides of the call, one speaker-tagged
+              transcript, still nothing leaving your Mac.
+            </p>
+            <ul className="mt-8 space-y-4">
+              {[
+                {
+                  title: "Starts without being asked",
+                  body: "Meeting apps record automatically; browsers ask first. Every app has its own policy, and you can flip any of them off.",
+                },
+                {
+                  title: "Knows who said what",
+                  body: "Your mic and the system audio are captured as separate tracks, then the far side is split per speaker so the transcript reads like a script.",
+                },
+                {
+                  title: "Titles and summaries, locally",
+                  body: "An optional local model writes the title and summary and even guesses speaker names. Opt in once, run offline forever.",
+                },
+              ].map((item) => (
+                <li key={item.title} className="border-l-2 border-amber/40 pl-4">
+                  <h3 className="panel-label text-sm text-bone">
+                    {item.title}
+                  </h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-bone-dim">
+                    {item.body}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
         <section className="mb-16 rounded-2xl border border-white/8 bg-faceplate px-6 py-5">
           <p className="text-center text-sm text-bone-dim">
             First launch downloads the speech model once (~600 MB), then
-            Grumble works entirely offline. Free and open source, so you can{" "}
+            Grumble works entirely offline. Meeting summaries are opt-in and
+            pull down a second model only if you ask for them. Free and open
+            source, so you can{" "}
             <a
               href={REPO}
               className="text-amber transition-colors hover:text-amber-hi"
