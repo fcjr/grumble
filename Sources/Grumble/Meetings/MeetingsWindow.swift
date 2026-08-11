@@ -12,12 +12,14 @@ extension Notification.Name {
 /// The Meetings browser window, opened from the menu bar. Grumble stays a
 /// menu bar app; this is an ordinary titled window hosting SwiftUI.
 @MainActor
-final class MeetingsWindowController {
+final class MeetingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    private var model: MeetingsViewModel?
     private weak var controller: MeetingsController?
 
     init(controller: MeetingsController) {
         self.controller = controller
+        super.init()
     }
 
     func show() {
@@ -28,18 +30,25 @@ final class MeetingsWindowController {
         }
         guard let controller, let store = controller.store else { return }
 
-        let view = MeetingsView(
-            model: MeetingsViewModel(store: store, controller: controller))
-        let hosting = NSHostingController(rootView: view)
+        let model = MeetingsViewModel(store: store, controller: controller)
+        let hosting = NSHostingController(rootView: MeetingsView(model: model))
         let window = NSWindow(contentViewController: hosting)
         window.title = "Meetings"
         window.setContentSize(NSSize(width: 900, height: 560))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
         window.center()
+        window.delegate = self
+        self.model = model
         self.window = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// The window is only ordered out, so the player would otherwise keep
+    /// playing with nothing on screen to stop it.
+    func windowWillClose(_ notification: Notification) {
+        model?.playback.stop()
     }
 }
 
@@ -52,13 +61,29 @@ final class MeetingsViewModel: ObservableObject {
         didSet { refresh() }
     }
     @Published var selectedID: Int64?
-    @Published var speakers: [MeetingSpeaker] = []
+    @Published var speakers: [MeetingSpeaker] = [] {
+        didSet {
+            speakerIndex = [:]
+            for (offset, speaker) in speakers.enumerated() {
+                if let id = speaker.id { speakerIndex[id] = offset }
+            }
+        }
+    }
     @Published var segments: [MeetingSegment] = []
+
+    /// Speaker id to position in `speakers`. Every transcript row looks up its
+    /// speaker twice to draw, so a linear scan per row shows up on long
+    /// meetings.
+    private var speakerIndex: [Int64: Int] = [:]
 
     let store: MeetingStore
     weak var controller: MeetingsController?
     private var changeObserver: NSObjectProtocol?
     let playback = MeetingPlayback()
+    /// `playback` is its own ObservableObject, so views watching the model
+    /// alone never hear about it. Republish its changes or controls that
+    /// depend on player state, like the pause button, go stale.
+    private var playbackObserver: AnyCancellable?
 
     init(store: MeetingStore, controller: MeetingsController) {
         self.store = store
@@ -67,6 +92,9 @@ final class MeetingsViewModel: ObservableObject {
             forName: .grumbleMeetingsChanged, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
+        }
+        playbackObserver = playback.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
         }
         refresh()
     }
@@ -104,11 +132,12 @@ final class MeetingsViewModel: ObservableObject {
     }
 
     func speakerLabel(for id: Int64) -> String {
-        speakers.first { $0.id == id }?.label ?? "Speaker"
+        guard let index = speakerIndex[id] else { return "Speaker" }
+        return speakers[index].label
     }
 
     func speakerColor(for id: Int64) -> Color {
-        guard let index = speakers.firstIndex(where: { $0.id == id }) else { return .secondary }
+        guard let index = speakerIndex[id] else { return .secondary }
         if speakers[index].slot == "me" { return Color(nsColor: .grumbleAmber) }
         let palette: [Color] = [.blue, .green, .purple, .pink, .teal]
         return palette[index % palette.count]
@@ -164,47 +193,84 @@ final class MeetingsViewModel: ObservableObject {
 final class MeetingPlayback: ObservableObject {
     @Published private(set) var player: AVPlayer?
     private var loadedDir: String?
+    /// The showing meeting, whose audio has not been parsed yet.
+    private var pendingDir: String?
+    private var isPreparing = false
 
+    /// Note which meeting is showing without touching its audio. Building the
+    /// composition has to parse both track files, which is far too slow to do
+    /// while someone is arrowing down the meeting list; the work is deferred
+    /// to the first play instead.
     func load(meeting: Meeting) {
-        guard meeting.audioDir != loadedDir else { return }
+        guard meeting.audioDir != pendingDir else { return }
         unload()
-        let dir = MeetingSession.meetingsRoot().appendingPathComponent(meeting.audioDir)
-        let meta = MeetingSessionMeta.load(from: dir)
-        let composition = AVMutableComposition()
-        for (file, key) in [("mic.caf", "mic"), ("system.caf", "system")] {
-            let url = dir.appendingPathComponent(file)
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            let asset = AVURLAsset(url: url)
-            guard let assetTrack = asset.tracks(withMediaType: .audio).first,
-                let track = composition.addMutableTrack(
-                    withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-            else { continue }
-            let offsetMs = meta?.startOffsetMs[key] ?? 0
-            try? track.insertTimeRange(
-                CMTimeRange(start: .zero, duration: asset.duration),
-                of: assetTrack,
-                at: CMTime(value: CMTimeValue(offsetMs), timescale: 1000)
-            )
-        }
-        guard !composition.tracks.isEmpty else { return }
-        player = AVPlayer(playerItem: AVPlayerItem(asset: composition))
-        loadedDir = meeting.audioDir
+        pendingDir = meeting.audioDir
     }
 
     func playFrom(ms: Int) {
-        guard let player else { return }
-        player.seek(to: CMTime(value: CMTimeValue(ms), timescale: 1000))
-        player.play()
+        if let player {
+            player.seek(to: CMTime(value: CMTimeValue(ms), timescale: 1000))
+            player.play()
+            return
+        }
+        guard let dir = pendingDir, !isPreparing else { return }
+        isPreparing = true
+        Task {
+            let prepared = await Self.makePlayer(audioDir: dir)
+            isPreparing = false
+            // The selection may have moved on while the audio was loading.
+            guard pendingDir == dir else { return }
+            player = prepared
+            loadedDir = dir
+            guard let prepared else { return }
+            _ = await prepared.seek(to: CMTime(value: CMTimeValue(ms), timescale: 1000))
+            prepared.play()
+        }
     }
 
     func pause() {
         player?.pause()
     }
 
-    func unload() {
+    /// Stop and release the player but keep track of which meeting is
+    /// showing, so reopening the window can start playback again without
+    /// needing the selection to change first.
+    func stop() {
         player?.pause()
         player = nil
         loadedDir = nil
+    }
+
+    func unload() {
+        stop()
+        pendingDir = nil
+    }
+
+    /// Stitches the mic and system tracks back onto one timeline. The awaits
+    /// are what matter: `loadTracks` and `load(.duration)` demux the file on
+    /// their own queues, so the main thread stays free while they run.
+    private static func makePlayer(audioDir: String) async -> AVPlayer? {
+        let dir = MeetingSession.meetingsRoot().appendingPathComponent(audioDir)
+        let meta = MeetingSessionMeta.load(from: dir)
+        let composition = AVMutableComposition()
+        for (file, key) in [("mic.caf", "mic"), ("system.caf", "system")] {
+            let url = dir.appendingPathComponent(file)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            let asset = AVURLAsset(url: url)
+            guard let assetTrack = try? await asset.loadTracks(withMediaType: .audio).first,
+                let duration = try? await asset.load(.duration),
+                let track = composition.addMutableTrack(
+                    withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+            else { continue }
+            let offsetMs = meta?.startOffsetMs[key] ?? 0
+            try? track.insertTimeRange(
+                CMTimeRange(start: .zero, duration: duration),
+                of: assetTrack,
+                at: CMTime(value: CMTimeValue(offsetMs), timescale: 1000)
+            )
+        }
+        guard !composition.tracks.isEmpty else { return nil }
+        return AVPlayer(playerItem: AVPlayerItem(asset: composition))
     }
 }
 
@@ -468,8 +534,13 @@ struct MeetingDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            ForEach(model.segments) { segment in
-                SegmentRow(model: model, segment: segment)
+            // Lazy: a long meeting runs to a couple of thousand segments, and
+            // a plain VStack would build and lay out every row before the
+            // first frame can be shown.
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(model.segments) { segment in
+                    SegmentRow(model: model, segment: segment)
+                }
             }
         }
     }
