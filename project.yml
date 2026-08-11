@@ -19,11 +19,20 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
     from: "7.0.0"
-  MLXSwiftExamples:
+  MLXSwiftLM:
     # MLXLLM/MLXLMCommon: local LLM inference for meeting titles, summaries,
-    # and speaker naming (Qwen3-4B, downloaded opt-in at first use).
-    url: https://github.com/ml-explore/mlx-swift-examples
-    from: "2.29.1"
+    # and speaker naming (Qwen3.5-4B, downloaded opt-in at first use).
+    # Successor to mlx-swift-examples, which stopped shipping at 2.29.1.
+    url: https://github.com/ml-explore/mlx-swift-lm
+    from: "3.31.4"
+  # mlx-swift-lm ships no downloader or tokenizer of its own: the MLXHuggingFace
+  # macros stitch these two packages in as the Hugging Face integration.
+  SwiftHuggingFace:
+    url: https://github.com/huggingface/swift-huggingface
+    from: "0.9.0"
+  SwiftTransformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: "1.3.0"
 
 schemes:
   Grumble:
@@ -74,8 +83,16 @@ targets:
       - package: FluidAudio
       - package: Sparkle
       - package: GRDB
-      - package: MLXSwiftExamples
+      - package: MLXSwiftLM
         product: MLXLLM
+      - package: MLXSwiftLM
+        product: MLXLMCommon
+      - package: MLXSwiftLM
+        product: MLXHuggingFace
+      - package: SwiftHuggingFace
+        product: HuggingFace
+      - package: SwiftTransformers
+        product: Tokenizers
     info:
       path: Resources/Info.plist
       properties:
@@ -113,8 +130,16 @@ targets:
     dependencies:
       - package: FluidAudio
       - package: GRDB
-      - package: MLXSwiftExamples
+      - package: MLXSwiftLM
         product: MLXLLM
+      - package: MLXSwiftLM
+        product: MLXLMCommon
+      - package: MLXSwiftLM
+        product: MLXHuggingFace
+      - package: SwiftHuggingFace
+        product: HuggingFace
+      - package: SwiftTransformers
+        product: Tokenizers
     info:
       path: Resources/InfoAppStore.plist
       properties:

@@ -47,7 +47,7 @@ const FAQS = [
   {
     question: "Why do meeting titles and summaries need another download?",
     answer:
-      "Summaries are optional and use a separate local language model, roughly 2.3 GB, which is only downloaded when you turn them on from the Meetings window. Transcripts with speaker labels work without it. Once downloaded, summarization runs offline like everything else.",
+      "Summaries are optional and use a separate local language model, roughly 3.1 GB, which is only downloaded when you turn them on from the Meetings window. Transcripts with speaker labels work without it. Once downloaded, summarization runs offline like everything else.",
   },
   {
     question: "Why does Grumble download something on first launch?",

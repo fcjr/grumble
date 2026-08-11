@@ -1,8 +1,11 @@
 import Foundation
+import HuggingFace
+import MLXHuggingFace
 import MLXLLM
 import MLXLMCommon
+import Tokenizers
 
-/// Owns the opt-in summarization model (Qwen3-4B, 4-bit, ~2.3 GB). Meetings
+/// Owns the opt-in summarization model (Qwen3.5-4B, 4-bit, ~3.1 GB). Meetings
 /// work end to end without it - transcripts only - and the first summary
 /// request offers the download. Once installed, the model loads at launch
 /// and every finished meeting gets a title, summary, and speaker-name
@@ -11,8 +14,19 @@ import MLXLMCommon
 final class SummarizerManager: ObservableObject {
     static let shared = SummarizerManager()
 
-    static let modelID = "mlx-community/Qwen3-4B-4bit"
-    private static let installedKey = "meetingSummarizerInstalled"
+    static let modelID = "mlx-community/Qwen3.5-4B-MLX-4bit"
+    /// Records *which* model was installed, not just that one was. A plain
+    /// bool would make everyone who installed an earlier model silently
+    /// re-download the new one at launch, without the consent prompt.
+    private static let installedModelKey = "meetingSummarizerInstalledModel"
+
+    /// Grumble owns its model storage instead of inheriting the Hugging Face
+    /// default (~/.cache/huggingface/hub, or wherever HF_HOME happens to
+    /// point). Weights this big should sit somewhere the app can account for
+    /// and prune, not in a shared cache it would never be safe to delete from.
+    static let modelsDirectory: URL = FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Grumble/Models")
 
     enum State: Equatable {
         case notInstalled
@@ -30,7 +44,7 @@ final class SummarizerManager: ObservableObject {
     var onReady: ((QwenMeetingSummarizer) -> Void)?
 
     var isInstalled: Bool {
-        UserDefaults.standard.bool(forKey: Self.installedKey)
+        UserDefaults.standard.string(forKey: Self.installedModelKey) == Self.modelID
     }
 
     /// Load the model at launch when it was installed previously.
@@ -49,24 +63,49 @@ final class SummarizerManager: ObservableObject {
     private func load() async {
         state = isInstalled ? .downloading(1) : .downloading(0)
         do {
-            let container = try await loadModelContainer(id: Self.modelID) { progress in
-                Task { @MainActor [weak self] in
-                    guard let self, case .downloading = self.state else { return }
-                    self.state = .downloading(progress.fractionCompleted)
-                }
-            }
-            UserDefaults.standard.set(true, forKey: Self.installedKey)
+            let configuration = ModelConfiguration(
+                id: Self.modelID, extraEOSTokens: ["<|im_end|>"])
+            let hub = HubClient(cache: HubCache(cacheDirectory: Self.modelsDirectory))
+            let container = try await loadModelContainer(
+                from: #hubDownloader(hub),
+                using: #huggingFaceTokenizerLoader(),
+                configuration: configuration,
+                progressHandler: { progress in
+                    Task { @MainActor [weak self] in
+                        guard let self, case .downloading = self.state else { return }
+                        self.state = .downloading(progress.fractionCompleted)
+                    }
+                })
+            UserDefaults.standard.set(Self.modelID, forKey: Self.installedModelKey)
             let summarizer = QwenMeetingSummarizer(container: container)
             self.summarizer = summarizer
             state = .ready
+            // Only once the replacement is known good, so a failed or
+            // interrupted download never costs someone their working model.
+            Self.pruneStaleModels()
             onReady?(summarizer)
         } catch {
             state = .failed(error.localizedDescription)
         }
     }
+
+    /// Drop every model in our directory except the one in use. Covers both
+    /// the "models--org--repo" layout used here and the nested "models/org/repo"
+    /// tree that shipped up to 0.1.10, so upgrading reclaims the old weights
+    /// rather than leaving a few gigabytes stranded forever.
+    private static func pruneStaleModels() {
+        let keep = "models--" + modelID.replacingOccurrences(of: "/", with: "--")
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(atPath: modelsDirectory.path) else {
+            return
+        }
+        for entry in entries where entry != keep && entry != ".metadata" {
+            try? fm.removeItem(at: modelsDirectory.appendingPathComponent(entry))
+        }
+    }
 }
 
-/// Qwen3-4B behind the MeetingSummarizer interface: one structured-output
+/// Qwen3.5-4B behind the MeetingSummarizer interface: one structured-output
 /// run per meeting producing a title, summary, and speaker-name proposals
 /// from context clues.
 final class QwenMeetingSummarizer: MeetingSummarizer {
@@ -102,16 +141,18 @@ final class QwenMeetingSummarizer: MeetingSummarizer {
             The "speakers" object maps speaker labels (including "Me") to real names that are \
             clear from context clues such as introductions or being addressed by name. Omit \
             speakers whose names never appear. Set "confident" to true only when the name is \
-            unambiguous. /no_think
+            unambiguous.
             """
 
         let session = ChatSession(
             container,
             instructions: instructions,
-            generateParameters: GenerateParameters(maxTokens: 1200, temperature: 0.2)
+            generateParameters: GenerateParameters(maxTokens: 1200, temperature: 0.2),
+            additionalContext: ["enable_thinking": false]
         )
-        // /no_think suppresses Qwen3's reasoning preamble; strip any that
-        // slips through before parsing.
+        // Qwen3.5 reasons by default and its template only honours the
+        // enable_thinking flag above, not Qwen3's /no_think token. Strip any
+        // reasoning that slips through before parsing.
         let raw = try await session.respond(to: prompt)
         if ProcessInfo.processInfo.environment["GRUMBLE_DEBUG_LLM"] != nil {
             NSLog("Grumble: LLM raw response: %@", String(raw.prefix(4000)))

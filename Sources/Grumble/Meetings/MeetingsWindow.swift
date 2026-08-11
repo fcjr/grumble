@@ -662,13 +662,13 @@ struct SummarizeControl: View {
         .confirmationDialog(
             "Download the summarization model?", isPresented: $confirmingDownload
         ) {
-            Button("Download (about 2.3 GB)") {
+            Button("Download (about 3.1 GB)") {
                 requested = true
                 manager.install()
             }
         } message: {
             Text(
-                "Titles, summaries, and speaker naming run on a local Qwen3-4B model. "
+                "Titles, summaries, and speaker naming run on a local Qwen3.5-4B model. "
                     + "It downloads once and everything stays on this Mac.")
         }
         .onChange(of: manager.state) {

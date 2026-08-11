@@ -6,6 +6,11 @@ app_version := env_var_or_default("APP_VERSION", "")
 app_build := env_var_or_default("APP_BUILD", "")
 version_flags := (if app_version != "" { "MARKETING_VERSION=" + app_version } else { "" }) + " " + (if app_build != "" { "CURRENT_PROJECT_VERSION=" + app_build } else { "" })
 
+# mlx-swift ships a CudaBuild build-tool plugin and mlx-swift-lm a swift-syntax
+# macro; both need trusting, which is an interactive prompt in Xcode and a hard
+# failure on the command line.
+plugin_flags := "-skipPackagePluginValidation -skipMacroValidation"
+
 # Show available recipes
 default:
     @just --list
@@ -74,7 +79,7 @@ generate:
 
 # Build the app
 build: generate
-    xcodebuild -project Grumble.xcodeproj -scheme Grumble -quiet build
+    xcodebuild -project Grumble.xcodeproj -scheme Grumble -quiet {{ plugin_flags }} build
 
 # Build and launch the app
 run: build
@@ -90,7 +95,7 @@ open: generate
 pkg: generate
     rm -rf build/pkg
     xcodebuild -project Grumble.xcodeproj -scheme Grumble -configuration Release \
-        -derivedDataPath build -quiet build {{ version_flags }}
+        -derivedDataPath build -quiet {{ plugin_flags }} build {{ version_flags }}
     mkdir -p build/pkg/dmg
     cp -R build/Build/Products/Release/Grumble.app build/pkg/dmg/
     # Sparkle's nested executables ship with Sparkle's own signature, which
@@ -138,7 +143,7 @@ archive-appstore: generate
     xcodebuild -project Grumble.xcodeproj -scheme GrumbleAppStore \
         -configuration Release -derivedDataPath build \
         -archivePath build/GrumbleAppStore.xcarchive \
-        -quiet archive {{ version_flags }}
+        -quiet {{ plugin_flags }} archive {{ version_flags }}
 
 # Archive and upload to App Store Connect. Signing is cloud-managed: the
 # export re-signs the archive with an Apple Distribution certificate and
