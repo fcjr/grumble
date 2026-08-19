@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var iconPhase: CGFloat = 0
     private var loginItem: NSMenuItem!
     private var modelMenu: NSMenu!
+    private var micMenu: NSMenu!
     private lazy var overlay = OverlayController()
     private let permissions = PermissionsController()
     private let about = AboutController()
@@ -257,6 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
         autoRecordItem.state = MeetingDetector.isEnabled ? .on : .off
+        rebuildMicMenu()
     }
 
     private func buildMenu() -> NSMenu {
@@ -317,6 +319,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.setSubmenu(modelMenu, for: modelItem)
         menu.addItem(modelItem)
         refreshModelCheckmarks()
+
+        micMenu = NSMenu()
+        let micItem = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
+        micItem.toolTip = "Takes effect from the next dictation or recording."
+        menu.setSubmenu(micMenu, for: micItem)
+        menu.addItem(micItem)
+        rebuildMicMenu()
 
         let hotKeyItem = NSMenuItem(
             title: "Change Hotkey\u{2026}", action: #selector(changeHotKey), keyEquivalent: "")
@@ -457,6 +466,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         updateUI(for: lastState)
+    }
+
+    /// Rebuilt on every menu open: devices come and go. The choice is stored
+    /// by UID and applies from the next dictation session; if the chosen
+    /// device is unplugged, it stays listed (dimmed) and capture falls back
+    /// to the system default until it returns.
+    private func rebuildMicMenu() {
+        micMenu.removeAllItems()
+        let preferred = AudioInputDevices.preferred
+
+        let defaultItem = NSMenuItem(
+            title: "System Default", action: #selector(selectMicrophone(_:)), keyEquivalent: "")
+        defaultItem.target = self
+        defaultItem.state = preferred == nil ? .on : .off
+        micMenu.addItem(defaultItem)
+        micMenu.addItem(.separator())
+
+        var sawPreferred = false
+        for device in AudioInputDevices.available() {
+            let item = NSMenuItem(
+                title: device.name, action: #selector(selectMicrophone(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = device
+            if device.uid == preferred?.uid {
+                item.state = .on
+                sawPreferred = true
+            }
+            micMenu.addItem(item)
+        }
+        if let preferred, !sawPreferred {
+            // action: nil leaves it disabled under autoenablesItems.
+            let item = NSMenuItem(
+                title: "\(preferred.name) (not connected)", action: nil, keyEquivalent: "")
+            item.state = .on
+            micMenu.addItem(item)
+        }
+    }
+
+    @objc private func selectMicrophone(_ sender: NSMenuItem) {
+        AudioInputDevices.preferred = sender.representedObject as? AudioInputDevices.Device
+        rebuildMicMenu()
     }
 
     private func refreshModelCheckmarks() {

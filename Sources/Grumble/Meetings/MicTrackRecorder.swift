@@ -1,8 +1,9 @@
 import AVFoundation
+import CoreAudio
 
-/// Records the default input device to an AAC-in-CAF file for a meeting
-/// session. Runs its own AVAudioEngine so it never touches the dictation
-/// capture path.
+/// Records the chosen input device - the menu's Microphone selection, or the
+/// system default - to an AAC-in-CAF file for a meeting session. Runs its own
+/// AVAudioEngine so it never touches the dictation capture path.
 ///
 /// Voice processing is enabled by default so Apple's echo canceller subtracts
 /// speaker playback from the mic - without it, a meeting played through
@@ -74,6 +75,8 @@ final class MicTrackRecorder {
                 voice = false
             }
         }
+        pinPreferredDevice(input)
+
         let inputFormat = input.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw RecorderError.formatUnsupported
@@ -128,6 +131,23 @@ final class MicTrackRecorder {
             input.removeTap(onBus: 0)
             file = nil
             throw RecorderError.engineStartFailed(error)
+        }
+    }
+
+    /// Point the input node at the microphone chosen in the menu. Pinning has
+    /// to happen after setVoiceProcessingEnabled, which swaps the node's audio
+    /// unit out from under us. Unlike dictation this path can't avoid
+    /// AVAudioEngine - it needs the duplex echo canceller - so the private
+    /// default-device aggregate is still opened alongside; the choice only
+    /// decides which device is recorded.
+    private func pinPreferredDevice(_ input: AVAudioInputNode) {
+        guard var device = AudioInputDevices.preferredDeviceID(), let unit = input.audioUnit
+        else { return }
+        let status = AudioUnitSetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+            &device, UInt32(MemoryLayout<AudioDeviceID>.size))
+        if status != noErr {
+            NSLog("Grumble: could not pin mic track to the chosen device (\(status))")
         }
     }
 

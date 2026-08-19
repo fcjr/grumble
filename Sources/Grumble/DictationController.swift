@@ -157,7 +157,7 @@ final class DictationController {
     private func stop() async {
         guard state == .listening, let manager else { return }
         state = .finishing
-        teardownSession()
+        await teardownSession()
         do {
             let finalText = try await manager.finish()
             inject(finalText)
@@ -180,13 +180,13 @@ final class DictationController {
     private func cancel() async {
         guard state == .listening else { return }
         state = .finishing
-        teardownSession()
+        await teardownSession()
         try? await manager?.reset()
         injector.reset()
         state = .idle
     }
 
-    private func teardownSession() {
+    private func teardownSession() async {
         removeFocusObserver()
         removeUserInputMonitor()
         settleTask?.cancel()
@@ -194,6 +194,12 @@ final class DictationController {
         audio.stop()
         bufferContinuation?.finish()
         bufferContinuation = nil
+        // The pump feeds the recognizer off the main actor, so let it drain
+        // the stream before finish() or reset() runs - otherwise the tail of
+        // the dictation, including the partial chunk audio.stop() just
+        // flushed, never reaches the model.
+        await pumpTask?.value
+        pumpTask = nil
     }
 
     /// When the transcript stops changing (speaker paused), flush the
