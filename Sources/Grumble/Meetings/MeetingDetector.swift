@@ -4,7 +4,8 @@ import Foundation
 /// Watches which processes are capturing the microphone via the CoreAudio
 /// process-object API (macOS 14.4+) and decides when a meeting starts and
 /// ends. A known meeting app capturing the mic for 3 continuous seconds is a
-/// meeting; the meeting is over when it releases the mic for 15 seconds.
+/// meeting; the meeting is over when every app that joined it has released
+/// the mic for 15 seconds.
 /// Browsers capturing the mic imply a web meeting (Google Meet has no native
 /// app) but only ever "ask" - a mic-using tab could be anything.
 @MainActor
@@ -84,10 +85,11 @@ final class MeetingDetector {
     private var listenedProcesses: Set<AudioObjectID> = []
     private var startTask: Task<Void, Never>?
     private var endTask: Task<Void, Never>?
-    /// The bundle id whose capture started the current meeting; set by the
-    /// controller through `adoptMeeting` and sticky until the end debounce
-    /// fires, so brief mute/unmute cycles don't split one meeting into many.
-    private(set) var activeMeetingBundleID: String?
+    /// Apps keeping the current meeting alive: the one that triggered it
+    /// plus anything that joined the mic later. Set by the controller through
+    /// `adoptMeeting` and sticky until the end debounce fires, so brief
+    /// mute/unmute cycles don't split one meeting into many.
+    private(set) var activeTriggerIDs: Set<String> = []
     /// Bundle ids already asked about this capture session, so one "ask"
     /// notification doesn't repeat every property change.
     private var asked: Set<String> = []
@@ -152,8 +154,18 @@ final class MeetingDetector {
         asked.formIntersection(capturing)
         suppressed.formIntersection(capturing)
 
-        if let active = activeMeetingBundleID {
-            if capturing.contains(active) {
+        if !activeTriggerIDs.isEmpty {
+            // A meeting app that joins the mic mid-meeting - a huddle that
+            // outlives the call it started in, a handoff between apps - holds
+            // the recording open too. Only auto-record apps qualify: a
+            // browser tab that grabs the mic for something unrelated must not
+            // be able to keep a recording running indefinitely.
+            activeTriggerIDs.formUnion(
+                capturing.subtracting(activeTriggerIDs).filter {
+                    Self.policy(for: $0) == .auto
+                })
+
+            if !activeTriggerIDs.isDisjoint(with: capturing) {
                 endTask?.cancel()
                 endTask = nil
             } else if endTask == nil {
@@ -161,7 +173,7 @@ final class MeetingDetector {
                     try? await Task.sleep(nanoseconds: UInt64(Self.endDebounce * 1_000_000_000))
                     guard let self, !Task.isCancelled else { return }
                     self.endTask = nil
-                    self.activeMeetingBundleID = nil
+                    self.activeTriggerIDs = []
                     self.onMeetingEnd?()
                 }
             }
@@ -197,7 +209,7 @@ final class MeetingDetector {
                 // The controller adopts the meeting once the recording is
                 // really running. If it isn't - the recorder failed to start -
                 // don't retry this app until it releases the mic.
-                if self.activeMeetingBundleID == nil { self.suppressed.insert(auto) }
+                if self.activeTriggerIDs.isEmpty { self.suppressed.insert(auto) }
             } else if let ask = stillCapturing.first(where: {
                 Self.policy(for: $0) == .ask && !self.asked.contains($0)
                     && !self.suppressed.contains($0)
@@ -208,10 +220,22 @@ final class MeetingDetector {
         }
     }
 
-    /// Called by the controller whenever a recording starts or stops, so end
-    /// detection tracks the app hosting the meeting. Passing nil clears it.
-    func adoptMeeting(bundleID: String?) {
-        activeMeetingBundleID = bundleID
+    /// Called by the controller when a recording starts, so end detection
+    /// tracks the apps hosting the meeting: `seed` (the app that triggered
+    /// it, if any) plus any meeting app already capturing.
+    func adoptMeeting(seed: String?) {
+        var ids = Self.currentlyCapturingBundleIDs(
+            excludingPID: ProcessInfo.processInfo.processIdentifier
+        ).filter { Self.policy(for: $0) == .auto }
+        if let seed { ids.insert(seed) }
+        activeTriggerIDs = ids
+        endTask?.cancel()
+        endTask = nil
+    }
+
+    /// The recording stopped; forget its trigger apps.
+    func releaseMeeting() {
+        activeTriggerIDs = []
         endTask?.cancel()
         endTask = nil
     }

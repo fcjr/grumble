@@ -56,8 +56,8 @@ final class MeetingsController: NSObject {
                 // Already recording, most likely started by hand before the
                 // meeting app opened the mic: adopt it so end detection has
                 // something to track.
-                if self.detector.activeMeetingBundleID == nil {
-                    self.detector.adoptMeeting(bundleID: bundleID)
+                if self.detector.activeTriggerIDs.isEmpty {
+                    self.detector.adoptMeeting(seed: bundleID)
                 }
                 return
             }
@@ -118,7 +118,7 @@ final class MeetingsController: NSObject {
                 startedAt: session.startedAt,
                 sourceBundleId: sourceBundleID
             )
-            detector.adoptMeeting(bundleID: sourceBundleID)
+            detector.adoptMeeting(seed: sourceBundleID)
             state = .recording(startedAt: session.startedAt, sourceBundleID: sourceBundleID)
         } catch {
             session?.discard()
@@ -136,7 +136,7 @@ final class MeetingsController: NSObject {
         session.stop()
         let audioDir = session.dir.lastPathComponent
         self.session = nil
-        detector.adoptMeeting(bundleID: nil)
+        detector.releaseMeeting()
         if !automatic { detector.suppressCurrentCaptures() }
         state = .idle
         try? store?.setState(audioDir: audioDir, .queued)
@@ -149,7 +149,7 @@ final class MeetingsController: NSObject {
         let audioDir = session.dir.lastPathComponent
         session.discard()
         self.session = nil
-        detector.adoptMeeting(bundleID: nil)
+        detector.releaseMeeting()
         detector.suppressCurrentCaptures()
         state = .idle
         if let store, let meeting = try? store.meeting(audioDir: audioDir) {
