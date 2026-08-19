@@ -206,61 +206,92 @@ func setReleaseNotes(versionID: String) {
     }
 }
 
-func submit(versionID: String) {
-    var submissionID: String?
-    let created = api(
-        "POST", "/v1/reviewSubmissions",
-        body: [
-            "data": [
-                "type": "reviewSubmissions",
-                "attributes": ["platform": "MAC_OS"],
-                "relationships": ["app": ["data": ["type": "apps", "id": appID]]],
-            ]
-        ], allowedErrors: [409])
-    if let data = created["data"] as? [String: Any] {
-        submissionID = data["id"] as? String
-    } else {
-        // An open submission already exists - reuse it if it hasn't been sent.
-        let open = items(
-            api(
-                "GET",
-                "/v1/reviewSubmissions?filter[app]=\(appID)&filter[state]=READY_FOR_REVIEW&limit=1"
-            ))
-        submissionID = open.first?["id"] as? String
-    }
-    guard let submissionID else { fail("no usable review submission: \(created)") }
+func submissionItems(_ submissionID: String) -> [String] {
+    items(api("GET", "/v1/reviewSubmissions/\(submissionID)/items?include=appStoreVersion"))
+        .compactMap {
+            let relationships = $0["relationships"] as? [String: Any]
+            let version = relationships?["appStoreVersion"] as? [String: Any]
+            return (version?["data"] as? [String: Any])?["id"] as? String
+        }
+}
 
-    // Only add the version if the submission doesn't already carry an item;
-    // a swallowed error here would leave an empty submission that cannot be
-    // submitted, so real failures must stay fatal.
-    let existingItems = items(api("GET", "/v1/reviewSubmissions/\(submissionID)/items"))
-    if existingItems.isEmpty {
-        _ = api(
-            "POST", "/v1/reviewSubmissionItems",
-            body: [
-                "data": [
-                    "type": "reviewSubmissionItems",
-                    "relationships": [
-                        "reviewSubmission": [
-                            "data": ["type": "reviewSubmissions", "id": submissionID]
-                        ],
-                        "appStoreVersion": [
-                            "data": ["type": "appStoreVersions", "id": versionID]
-                        ],
-                    ],
-                ]
-            ])
-    }
-
-    _ = api(
+func send(_ submissionID: String) {
+    let response = api(
         "PATCH", "/v1/reviewSubmissions/\(submissionID)",
         body: [
             "data": [
                 "type": "reviewSubmissions", "id": submissionID,
                 "attributes": ["submitted": true],
             ]
+        ], allowedErrors: [409])
+    let status = response["_status"] as! Int
+    print(
+        status < 400
+            ? "submitted \(version) for review"
+            : "submission \(submissionID) was already sent")
+}
+
+func submit(versionID: String) {
+    // Submissions that still hold onto their versions. A version can belong to
+    // only one of them, and renaming a version keeps that association, so a
+    // half-finished earlier run leaves the version parked in an old submission.
+    let openStates = "READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES"
+    let open = items(
+        api(
+            "GET",
+            "/v1/reviewSubmissions?filter[app]=\(appID)&filter[state]=\(openStates)&limit=50"
+        ))
+
+    for submission in open {
+        guard let id = submission["id"] as? String,
+            submissionItems(id).contains(versionID)
+        else { continue }
+        let state = (submission["attributes"] as? [String: Any])?["state"] as? String ?? "unknown"
+        if state == "READY_FOR_REVIEW" {
+            print("version \(version) already in submission \(id), sending it")
+            send(id)
+        } else {
+            print("version \(version) already submitted in \(id) (\(state))")
+        }
+        return
+    }
+
+    var submissionID = open.first {
+        ($0["attributes"] as? [String: Any])?["state"] as? String == "READY_FOR_REVIEW"
+    }?["id"] as? String
+    if submissionID == nil {
+        let created = api(
+            "POST", "/v1/reviewSubmissions",
+            body: [
+                "data": [
+                    "type": "reviewSubmissions",
+                    "attributes": ["platform": "MAC_OS"],
+                    "relationships": ["app": ["data": ["type": "apps", "id": appID]]],
+                ]
+            ], allowedErrors: [409])
+        submissionID = (created["data"] as? [String: Any])?["id"] as? String
+        guard submissionID != nil else { fail("no usable review submission: \(created)") }
+    }
+    let id = submissionID!
+
+    // A swallowed error here would leave a submission without our version,
+    // so real failures must stay fatal.
+    _ = api(
+        "POST", "/v1/reviewSubmissionItems",
+        body: [
+            "data": [
+                "type": "reviewSubmissionItems",
+                "relationships": [
+                    "reviewSubmission": [
+                        "data": ["type": "reviewSubmissions", "id": id]
+                    ],
+                    "appStoreVersion": [
+                        "data": ["type": "appStoreVersions", "id": versionID]
+                    ],
+                ],
+            ]
         ])
-    print("submitted \(version) for review")
+    send(id)
 }
 
 // MARK: - Main
