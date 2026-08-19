@@ -18,8 +18,9 @@ final class MeetingDetector {
     var onAutoStart: ((String) -> Void)?
     /// An app started capturing and policy says ask first.
     var onAsk: ((String) -> Void)?
-    /// The app that triggered the current meeting released the mic.
-    var onMeetingEnd: (() -> Void)?
+    /// Every app holding the current meeting open released the mic; carries
+    /// the apps that were tracked so the controller can weigh the signal.
+    var onMeetingEnd: ((Set<String>) -> Void)?
 
     private static let startDebounce: TimeInterval = 3
     private static let endDebounce: TimeInterval = 8
@@ -182,8 +183,9 @@ final class MeetingDetector {
                         self.refresh()
                         return
                     }
+                    let ended = self.activeTriggerIDs
                     self.activeTriggerIDs = []
-                    self.onMeetingEnd?()
+                    self.onMeetingEnd?(ended)
                 }
             }
             return
@@ -259,6 +261,17 @@ final class MeetingDetector {
                 excludingPID: ProcessInfo.processInfo.processIdentifier))
         startTask?.cancel()
         startTask = nil
+    }
+
+    /// Whether a bundle id is one of the browsers we treat as a web meeting.
+    static func isBrowser(_ bundleID: String) -> Bool {
+        browserPrefixes.contains { bundleID.hasPrefix($0) }
+    }
+
+    /// Which of these apps hold the mic right now.
+    static func capturing(among bundleIDs: Set<String>) -> Set<String> {
+        currentlyCapturingBundleIDs(excludingPID: ProcessInfo.processInfo.processIdentifier)
+            .intersection(bundleIDs)
     }
 
     /// The app most plausibly hosting a meeting right now, for tagging

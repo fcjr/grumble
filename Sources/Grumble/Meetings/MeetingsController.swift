@@ -27,6 +27,16 @@ final class MeetingsController: NSObject {
 
     private static let askCategoryID = "GRUMBLE_MEETING_ASK"
     private static let recordActionID = "RECORD"
+    private static let endCategoryID = "GRUMBLE_MEETING_END"
+    private static let keepActionID = "KEEP"
+    /// How long the "still in a meeting?" prompt stands before the recording
+    /// stops on its own.
+    private static let stopConfirmDelay: TimeInterval = 30
+
+    /// A browser-triggered stop waiting out `stopConfirmDelay`, and the
+    /// trigger apps it is waiting on.
+    private var pendingStop: Task<Void, Never>?
+    private var pendingStopTriggers: Set<String> = []
 
     override init() {
         do {
@@ -46,9 +56,13 @@ final class MeetingsController: NSObject {
         center.delegate = self
         let record = UNNotificationAction(
             identifier: Self.recordActionID, title: "Record", options: [])
-        let category = UNNotificationCategory(
+        let askCategory = UNNotificationCategory(
             identifier: Self.askCategoryID, actions: [record], intentIdentifiers: [])
-        center.setNotificationCategories([category])
+        let keep = UNNotificationAction(
+            identifier: Self.keepActionID, title: "Keep Recording", options: [])
+        let endCategory = UNNotificationCategory(
+            identifier: Self.endCategoryID, actions: [keep], intentIdentifiers: [])
+        center.setNotificationCategories([askCategory, endCategory])
 
         detector.onAutoStart = { [weak self] bundleID in
             guard let self else { return }
@@ -72,9 +86,16 @@ final class MeetingsController: NSObject {
             guard let self, self.state == .idle else { return }
             self.askToRecord(bundleID: bundleID)
         }
-        detector.onMeetingEnd = { [weak self] in
+        detector.onMeetingEnd = { [weak self] triggerIDs in
             guard let self, case .recording = self.state else { return }
-            self.stopRecording(automatic: true)
+            // A browser letting go of the mic is a weak signal: it could be a
+            // tab switch or a device change as easily as the end of the call.
+            // Native meeting apps are trusted to mean it.
+            if !triggerIDs.isEmpty, triggerIDs.allSatisfy(MeetingDetector.isBrowser) {
+                self.confirmStop(triggerIDs: triggerIDs)
+            } else {
+                self.stopRecording(automatic: true)
+            }
         }
 
         SummarizerManager.shared.onReady = { [weak self] summarizer in
@@ -119,6 +140,7 @@ final class MeetingsController: NSObject {
                 sourceBundleId: sourceBundleID
             )
             detector.adoptMeeting(seed: sourceBundleID)
+            clearPendingStop()
             state = .recording(startedAt: session.startedAt, sourceBundleID: sourceBundleID)
         } catch {
             session?.discard()
@@ -136,6 +158,7 @@ final class MeetingsController: NSObject {
         session.stop()
         let audioDir = session.dir.lastPathComponent
         self.session = nil
+        clearPendingStop(audioDir: audioDir)
         detector.releaseMeeting()
         if !automatic { detector.suppressCurrentCaptures() }
         state = .idle
@@ -149,6 +172,7 @@ final class MeetingsController: NSObject {
         let audioDir = session.dir.lastPathComponent
         session.discard()
         self.session = nil
+        clearPendingStop(audioDir: audioDir)
         detector.releaseMeeting()
         detector.suppressCurrentCaptures()
         state = .idle
@@ -156,6 +180,84 @@ final class MeetingsController: NSObject {
             try? store.deleteMeeting(meeting)
         }
         onActivity?()
+    }
+
+    // MARK: - Stop confirmation
+
+    /// A browser released the mic. Ask before ending the recording, and stop
+    /// once the prompt has stood unanswered for `stopConfirmDelay`.
+    private func confirmStop(triggerIDs: Set<String>) {
+        guard let audioDir = session?.dir.lastPathComponent else { return }
+        clearPendingStop()
+        pendingStopTriggers = triggerIDs
+        pendingStop = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.stopConfirmDelay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.pendingStop = nil
+            self.pendingStopTriggers = []
+            self.clearStopPrompt(audioDir: audioDir)
+            guard self.session?.dir.lastPathComponent == audioDir else { return }
+            // Back on the mic while the prompt stood: the meeting carried on,
+            // so hand end detection back to the detector.
+            if self.resumeTracking(triggerIDs) { return }
+            self.stopRecording(automatic: true)
+        }
+
+        requestNotificationAuthorization { [weak self] granted in
+            guard let self, self.session?.dir.lastPathComponent == audioDir else { return }
+            guard granted else {
+                // Nowhere to ask: stop as we always did.
+                self.clearPendingStop()
+                self.stopRecording(automatic: true)
+                return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = "Still in a meeting?"
+            let name = triggerIDs.first.map { Self.appName(for: $0) }
+            content.body =
+                (name.map { "\($0) stopped using the microphone. " } ?? "")
+                + "Grumble stops recording in \(Int(Self.stopConfirmDelay)) seconds."
+            content.categoryIdentifier = Self.endCategoryID
+            content.userInfo = ["audioDir": audioDir]
+            let request = UNNotificationRequest(
+                identifier: Self.stopPromptID(audioDir), content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request)
+        }
+    }
+
+    /// "Keep Recording": drop the pending stop. If a trigger app is back on
+    /// the mic the detector takes over again, otherwise the recording runs
+    /// until the user stops it.
+    private func keepRecording(audioDir: String?) {
+        guard let audioDir, session?.dir.lastPathComponent == audioDir else { return }
+        let triggers = pendingStopTriggers
+        clearPendingStop(audioDir: audioDir)
+        _ = resumeTracking(triggers)
+        onActivity?()
+    }
+
+    /// Re-adopt the meeting if one of its apps is capturing again. Returns
+    /// whether it was.
+    private func resumeTracking(_ triggerIDs: Set<String>) -> Bool {
+        guard let back = MeetingDetector.capturing(among: triggerIDs).first else { return false }
+        detector.adoptMeeting(seed: back)
+        return true
+    }
+
+    private func clearPendingStop(audioDir: String? = nil) {
+        pendingStop?.cancel()
+        pendingStop = nil
+        pendingStopTriggers = []
+        if let audioDir { clearStopPrompt(audioDir: audioDir) }
+    }
+
+    private func clearStopPrompt(audioDir: String) {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(
+            withIdentifiers: [Self.stopPromptID(audioDir)])
+    }
+
+    private static func stopPromptID(_ audioDir: String) -> String {
+        "grumble-end-\(audioDir)"
     }
 
     // MARK: - Ask flow
@@ -248,11 +350,16 @@ extension MeetingsController: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = response.notification.request.content.userInfo
         let bundleID = userInfo["bundleID"] as? String
+        let audioDir = userInfo["audioDir"] as? String
         let actionID = response.actionIdentifier
+        let categoryID = response.notification.request.content.categoryIdentifier
         Task { @MainActor in
-            if let bundleID,
-                actionID == Self.recordActionID || actionID == UNNotificationDefaultActionIdentifier
-            {
+            let acted =
+                actionID == UNNotificationDefaultActionIdentifier
+                || actionID == Self.recordActionID || actionID == Self.keepActionID
+            if categoryID == Self.endCategoryID {
+                if acted { self.keepRecording(audioDir: audioDir) }
+            } else if let bundleID, acted {
                 self.startRecording(sourceBundleID: bundleID)
             }
             completionHandler()
