@@ -181,8 +181,9 @@ final class MeetingsController: NSObject {
         let audioDir = session.dir.lastPathComponent
         self.session = nil
         clearPendingStop(audioDir: audioDir)
+        let triggers = detector.activeTriggerIDs
         detector.releaseMeeting()
-        if !automatic { detector.suppressCurrentCaptures() }
+        if !automatic { detector.suppressAutoStart(triggers) }
         state = .idle
         try? store?.setState(audioDir: audioDir, .queued)
         Task { [pipeline] in await pipeline?.enqueue(audioDir: audioDir) }
@@ -195,8 +196,9 @@ final class MeetingsController: NSObject {
         session.discard()
         self.session = nil
         clearPendingStop(audioDir: audioDir)
+        let triggers = detector.activeTriggerIDs
         detector.releaseMeeting()
-        detector.suppressCurrentCaptures()
+        detector.suppressAutoStart(triggers)
         state = .idle
         if let store, let meeting = try? store.meeting(audioDir: audioDir) {
             try? store.deleteMeeting(meeting)

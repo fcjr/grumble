@@ -219,11 +219,14 @@ final class MeetingDetector {
             if let auto = stillCapturing.first(where: {
                 Self.policy(for: $0) == .auto && !self.suppressed.contains($0)
             }) {
+                // Suppress first: a failed start puts up a modal alert, and
+                // that run loop keeps delivering CoreAudio changes, so an app
+                // left unsuppressed can queue up a second attempt behind the
+                // alert. The controller adopts the meeting once the recording
+                // is really running, which clears it again.
+                self.suppressed.insert(auto)
                 self.onAutoStart?(auto)
-                // The controller adopts the meeting once the recording is
-                // really running. If it isn't - the recorder failed to start -
-                // don't retry this app until it releases the mic.
-                if self.activeTriggerIDs.isEmpty { self.suppressed.insert(auto) }
+                if !self.activeTriggerIDs.isEmpty { self.suppressed.remove(auto) }
             } else if let ask = stillCapturing.first(where: {
                 Self.policy(for: $0) == .ask && !self.asked.contains($0)
                     && !self.suppressed.contains($0)
@@ -252,14 +255,19 @@ final class MeetingDetector {
         endTask = nil
     }
 
-    /// Don't auto-start for anything holding the mic right now until it lets
-    /// go. The controller calls this when the user stops or discards a
-    /// recording by hand: the meeting app usually keeps capturing, and
-    /// starting a fresh recording seconds later isn't what they asked for.
-    func suppressCurrentCaptures() {
+    /// Don't auto-start for the apps that were hosting a meeting, or for any
+    /// meeting app on the mic right now, until they let go. The controller
+    /// calls this when the user stops or discards a recording by hand: the
+    /// meeting app usually keeps capturing, and starting a fresh recording
+    /// seconds later isn't what they asked for. Apps that only ever ask are
+    /// left alone unless they hosted the meeting; an unrelated browser tab
+    /// holding the mic can still offer to record what it's doing.
+    func suppressAutoStart(_ bundleIDs: Set<String>) {
+        suppressed.formUnion(bundleIDs)
         suppressed.formUnion(
             Self.currentlyCapturingBundleIDs(
-                excludingPID: ProcessInfo.processInfo.processIdentifier))
+                excludingPID: ProcessInfo.processInfo.processIdentifier
+            ).filter { Self.policy(for: $0) == .auto })
         startTask?.cancel()
         startTask = nil
     }
