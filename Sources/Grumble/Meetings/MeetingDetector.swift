@@ -184,8 +184,9 @@ final class MeetingDetector {
             } else if endTask == nil, Self.stopsAutomatically {
                 endTask = Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: UInt64(Self.endDebounce * 1_000_000_000))
-                    guard let self, !Task.isCancelled, Self.stopsAutomatically else { return }
+                    guard let self, !Task.isCancelled else { return }
                     self.endTask = nil
+                    guard Self.stopsAutomatically else { return }
                     // The debounce runs on notifications alone, and a missed
                     // one would end a live meeting. Confirm against the real
                     // state before stopping anything.

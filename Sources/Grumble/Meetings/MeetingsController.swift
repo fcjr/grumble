@@ -132,15 +132,24 @@ final class MeetingsController: NSObject {
         sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: nil
         ) { [weak self] _ in
-            guard Thread.isMainThread else { return }
-            MainActor.assumeIsolated { self?.stopRecording() }
+            self?.stopForLifecycleEvent()
         }
         terminateObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: nil
         ) { [weak self] _ in
-            guard Thread.isMainThread else { return }
-            MainActor.assumeIsolated { self?.stopRecording() }
+            self?.stopForLifecycleEvent()
         }
+    }
+
+    /// Both notifications post on the main thread, but dropping the stop
+    /// would lose the recording outright - no meta.json means the pipeline
+    /// never sees it - so an unexpected thread gets a blocking hop rather
+    /// than nothing. The stop counts as automatic: the meeting app is
+    /// usually still on the mic, and after waking up the meeting it belongs
+    /// to should carry on recording.
+    private nonisolated func stopForLifecycleEvent() {
+        let stop = { MainActor.assumeIsolated { self.stopRecording(automatic: true) } }
+        if Thread.isMainThread { stop() } else { DispatchQueue.main.sync(execute: stop) }
     }
 
     var isRecording: Bool {
