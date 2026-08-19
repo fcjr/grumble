@@ -230,12 +230,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // Launch at login defaults to on; register once so turning it off
-        // later sticks.
-        let defaultedKey = "didDefaultLaunchAtLogin"
-        if !UserDefaults.standard.bool(forKey: defaultedKey) {
-            UserDefaults.standard.set(true, forKey: defaultedKey)
-            try? SMAppService.mainApp.register()
-        }
+        // later sticks. App Store builds may not register themselves without
+        // the user asking (guideline 2.4.5(iii)) - there it stays off until
+        // the checkbox in Setup or the menu bar item is switched on.
+        #if !APPSTORE
+            let defaultedKey = "didDefaultLaunchAtLogin"
+            if !UserDefaults.standard.bool(forKey: defaultedKey) {
+                UserDefaults.standard.set(true, forKey: defaultedKey)
+                try? SMAppService.mainApp.register()
+            }
+        #endif
 
         if CommandLine.arguments.contains("--setup") || !hotKeyRegistered {
             permissions.show()
@@ -244,6 +248,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if CommandLine.arguments.contains("--about") {
             about.show()
+        }
+        if CommandLine.arguments.contains("--meetings") {
+            meetingsWindow.show()
         }
         #if !APPSTORE
             if CommandLine.arguments.contains("--check-updates"), updaterController != nil {

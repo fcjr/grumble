@@ -72,7 +72,7 @@ final class PermissionsController {
 
         let blurb = NSTextField(
             wrappingLabelWithString:
-                "Put your cursor in any text field, press the hotkey, and talk — Grumble types as you speak. Press it again to stop. macOS needs you to allow two things first."
+                "Put your cursor in any text field, press the hotkey, and talk. Grumble types as you speak. Press it again to stop. macOS needs you to allow two things first."
         )
         blurb.font = .systemFont(ofSize: 12)
         blurb.textColor = .grumbleBoneDim
@@ -85,12 +85,12 @@ final class PermissionsController {
 
         axRow = PermissionRow(
             title: "Accessibility",
-            detail: "So Grumble can type into other apps — switch Grumble on in the list."
+            detail: "So Grumble can type into other apps. Switch Grumble on in the list."
         ) { [weak self] in self?.axAction() }
 
         systemAudioRow = PermissionRow(
             title: "System audio",
-            detail: "So meeting recordings include the other participants. Optional — only used while recording a meeting."
+            detail: "So meeting recordings include the other participants. Only used while recording."
         ) { [weak self] in self?.systemAudioAction() }
 
         hotKeyRow = PermissionRow(
@@ -200,20 +200,20 @@ final class PermissionsController {
         let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         micRow.update(
             granted: micStatus == .authorized,
-            buttonTitle: micStatus == .notDetermined ? "Allow\u{2026}" : "Open Settings\u{2026}"
+            buttonTitle: micStatus == .notDetermined ? "Continue\u{2026}" : "Open Settings\u{2026}"
         )
         axRow.update(granted: AXIsProcessTrusted(), buttonTitle: "Open Settings\u{2026}")
 
         if UserDefaults.standard.bool(forKey: Self.systemAudioGrantedKey) {
             systemAudioRow.set(dotColor: .systemGreen, buttonTitle: nil)
         } else {
-            systemAudioRow.set(dotColor: .grumbleAmber, buttonTitle: "Allow\u{2026}")
+            systemAudioRow.set(dotColor: .grumbleAmber, buttonTitle: "Continue\u{2026}")
         }
 
         let display = hotKeyDisplay?() ?? ""
         if hotKeyConflict?() == true {
             hotKeyRow.setDetail(
-                "\(display) is taken by another app \u{2014} choose a different hotkey.")
+                "\(display) is taken by another app. Choose a different hotkey.")
             hotKeyRow.set(dotColor: .grumbleNeedle, buttonTitle: "Change\u{2026}")
         } else {
             hotKeyRow.setDetail("\(display) starts and stops dictation.")
@@ -225,13 +225,13 @@ final class PermissionsController {
             modelRow.setDetail("Loads shortly after launch.")
             modelRow.set(dotColor: .grumbleAmber, buttonTitle: nil)
         case .loading:
-            modelRow.setDetail("Downloading \u{2014} \(Self.modelCacheSizeMB()) MB so far.")
+            modelRow.setDetail("Downloading: \(Self.modelCacheSizeMB()) MB so far.")
             modelRow.set(dotColor: .grumbleAmber, buttonTitle: nil)
         case .loaded:
-            modelRow.setDetail("Ready \u{2014} everything runs on this Mac.")
+            modelRow.setDetail("Ready. Everything runs on this Mac.")
             modelRow.set(dotColor: .systemGreen, buttonTitle: nil)
         case .failed:
-            modelRow.setDetail("Download failed \u{2014} check your connection.")
+            modelRow.setDetail("Download failed. Check your connection.")
             modelRow.set(dotColor: .grumbleNeedle, buttonTitle: "Retry")
         }
 
@@ -241,8 +241,8 @@ final class PermissionsController {
         doneButton.isHidden = !ready
         statusHint.stringValue =
             ready
-            ? "All set \u{2014} press \(display) in any text field and talk."
-            : "Allow both, then you're ready to dictate."
+            ? "All set. Press \(display) in any text field and talk."
+            : "Finish the steps above, then you're ready to dictate."
 
         // The last grant usually happens while System Settings is frontmost
         // (our window sits below it) - surface the finished state.
@@ -387,7 +387,7 @@ final class PermissionRow: NSView {
             title, size: 13, color: .grumbleBone)
         detailLabel.font = .systemFont(ofSize: 11)
         detailLabel.textColor = .grumbleBoneDim
-        detailLabel.maximumNumberOfLines = 2
+        detailLabel.maximumNumberOfLines = 0
         detailLabel.preferredMaxLayoutWidth = 240
 
         let text = NSStackView(views: [titleLabel, detailLabel])
