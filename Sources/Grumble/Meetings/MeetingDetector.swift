@@ -97,6 +97,9 @@ final class MeetingDetector {
     /// Bundle ids that must not trigger another start until they release the
     /// mic, because a start attempt for them didn't produce a recording.
     private var suppressed: Set<String> = []
+    /// Who held the mic at the last refresh, so we can tell a capture that
+    /// just started from one that was already running.
+    private var lastCapturing: Set<String> = []
 
     func start() {
         guard listenerBlock == nil else { return }
@@ -154,17 +157,17 @@ final class MeetingDetector {
 
         asked.formIntersection(capturing)
         suppressed.formIntersection(capturing)
+        let justStarted = capturing.subtracting(lastCapturing)
+        lastCapturing = capturing
 
         if !activeTriggerIDs.isEmpty {
-            // A meeting app that joins the mic mid-meeting - a huddle that
+            // A meeting app that opens the mic mid-meeting - a huddle that
             // outlives the call it started in, a handoff between apps - holds
-            // the recording open too. Only auto-record apps qualify: a
-            // browser tab that grabs the mic for something unrelated must not
-            // be able to keep a recording running indefinitely.
-            activeTriggerIDs.formUnion(
-                capturing.subtracting(activeTriggerIDs).filter {
-                    Self.policy(for: $0) == .auto
-                })
+            // the recording open too. It has to be a capture that just
+            // started: an app that was already on the mic before the meeting
+            // (a voice channel someone sits in all day) says nothing about
+            // this meeting, and would keep the recording running for hours.
+            activeTriggerIDs.formUnion(justStarted.filter { Self.policy(for: $0) == .auto })
 
             if !activeTriggerIDs.isDisjoint(with: capturing) {
                 endTask?.cancel()
@@ -232,14 +235,12 @@ final class MeetingDetector {
     }
 
     /// Called by the controller when a recording starts, so end detection
-    /// tracks the apps hosting the meeting: `seed` (the app that triggered
-    /// it, if any) plus any meeting app already capturing.
+    /// tracks the app hosting the meeting. Only the app that triggered it
+    /// counts; anything else already on the mic was there before this meeting
+    /// and isn't evidence that it's still going. Meeting apps that open the
+    /// mic later join the set as they do.
     func adoptMeeting(seed: String?) {
-        var ids = Self.currentlyCapturingBundleIDs(
-            excludingPID: ProcessInfo.processInfo.processIdentifier
-        ).filter { Self.policy(for: $0) == .auto }
-        if let seed { ids.insert(seed) }
-        activeTriggerIDs = ids
+        activeTriggerIDs = seed.map { [$0] } ?? []
         endTask?.cancel()
         endTask = nil
     }
