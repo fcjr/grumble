@@ -38,6 +38,9 @@ final class MeetingsController: NSObject {
     private var pendingStop: Task<Void, Never>?
     private var pendingStopTriggers: Set<String> = []
 
+    private var sleepObserver: NSObjectProtocol?
+    private var terminateObserver: NSObjectProtocol?
+
     override init() {
         do {
             let store = try MeetingStore()
@@ -112,6 +115,25 @@ final class MeetingsController: NSObject {
             if let store { MeetingAudioRetention.enforce(store: store) }
         }
         detector.start()
+        installLifecycleObservers()
+    }
+
+    /// Sleep and quit both pull the audio graph out from under a recording,
+    /// leaving a session that records nothing until someone notices. Stop
+    /// synchronously in both cases: the tracks and meta.json have to land on
+    /// disk before we lose the process, and a hop to the next run loop pass
+    /// can lose that race.
+    private func installLifecycleObservers() {
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopRecording() }
+        }
+        terminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopRecording() }
+        }
     }
 
     var isRecording: Bool {
