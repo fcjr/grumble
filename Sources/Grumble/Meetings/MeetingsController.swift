@@ -86,8 +86,11 @@ final class MeetingsController: NSObject {
                     + "Stop or discard from the menu bar.")
         }
         detector.onAsk = { [weak self] bundleID in
-            guard let self, self.state == .idle else { return }
+            // Busy recording: say the offer wasn't made, so it comes back
+            // once this meeting is over and the app is still on the mic.
+            guard let self, self.state == .idle else { return false }
             self.askToRecord(bundleID: bundleID)
+            return true
         }
         detector.onMeetingEnd = { [weak self] triggerIDs in
             guard let self, case .recording = self.state else { return }
@@ -260,9 +263,11 @@ final class MeetingsController: NSObject {
         onActivity?()
     }
 
-    /// Re-adopt the meeting if one of its apps is capturing again. Returns
-    /// whether it was.
+    /// Hand end detection back to the detector if the meeting is still
+    /// going: either it adopted a new one while the prompt stood, or one of
+    /// the trigger apps is on the mic again. Returns whether it took over.
     private func resumeTracking(_ triggerIDs: Set<String>) -> Bool {
+        if !detector.activeTriggerIDs.isEmpty { return true }
         guard let back = MeetingDetector.capturing(among: triggerIDs).first else { return false }
         detector.adoptMeeting(seed: back)
         return true

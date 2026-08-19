@@ -16,8 +16,9 @@ final class MeetingDetector {
 
     /// A meeting app started capturing and policy says record automatically.
     var onAutoStart: ((String) -> Void)?
-    /// An app started capturing and policy says ask first.
-    var onAsk: ((String) -> Void)?
+    /// An app started capturing and policy says ask first. Returns whether
+    /// the user was really asked; if not, the offer stands for later.
+    var onAsk: ((String) -> Bool)?
     /// Every app holding the current meeting open released the mic; carries
     /// the apps that were tracked so the controller can weigh the signal.
     var onMeetingEnd: ((Set<String>) -> Void)?
@@ -231,8 +232,7 @@ final class MeetingDetector {
                 Self.policy(for: $0) == .ask && !self.asked.contains($0)
                     && !self.suppressed.contains($0)
             }) {
-                self.asked.insert(ask)
-                self.onAsk?(ask)
+                if self.onAsk?(ask) == true { self.asked.insert(ask) }
             }
         }
     }
