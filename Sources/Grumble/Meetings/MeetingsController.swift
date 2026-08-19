@@ -74,7 +74,7 @@ final class MeetingsController: NSObject {
         }
         detector.onMeetingEnd = { [weak self] in
             guard let self, case .recording = self.state else { return }
-            self.stopRecording()
+            self.stopRecording(automatic: true)
         }
 
         SummarizerManager.shared.onReady = { [weak self] summarizer in
@@ -128,12 +128,16 @@ final class MeetingsController: NSObject {
         onActivity?()
     }
 
-    func stopRecording() {
+    /// `automatic` marks the stop as coming from the detector; a stop the
+    /// user asked for also blocks auto-record until the meeting app releases
+    /// the mic, so it doesn't start straight back up.
+    func stopRecording(automatic: Bool = false) {
         guard case .recording = state, let session else { return }
         session.stop()
         let audioDir = session.dir.lastPathComponent
         self.session = nil
         detector.adoptMeeting(bundleID: nil)
+        if !automatic { detector.suppressCurrentCaptures() }
         state = .idle
         try? store?.setState(audioDir: audioDir, .queued)
         Task { [pipeline] in await pipeline?.enqueue(audioDir: audioDir) }
@@ -146,6 +150,7 @@ final class MeetingsController: NSObject {
         session.discard()
         self.session = nil
         detector.adoptMeeting(bundleID: nil)
+        detector.suppressCurrentCaptures()
         state = .idle
         if let store, let meeting = try? store.meeting(audioDir: audioDir) {
             try? store.deleteMeeting(meeting)

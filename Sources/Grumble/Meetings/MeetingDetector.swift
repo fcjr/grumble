@@ -216,6 +216,18 @@ final class MeetingDetector {
         endTask = nil
     }
 
+    /// Don't auto-start for anything holding the mic right now until it lets
+    /// go. The controller calls this when the user stops or discards a
+    /// recording by hand: the meeting app usually keeps capturing, and
+    /// starting a fresh recording seconds later isn't what they asked for.
+    func suppressCurrentCaptures() {
+        suppressed.formUnion(
+            Self.currentlyCapturingBundleIDs(
+                excludingPID: ProcessInfo.processInfo.processIdentifier))
+        startTask?.cancel()
+        startTask = nil
+    }
+
     /// The app most plausibly hosting a meeting right now, for tagging
     /// manual recordings.
     static func currentMeetingApp() -> String? {
