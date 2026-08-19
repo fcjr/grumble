@@ -125,16 +125,20 @@ final class MeetingsController: NSObject {
     /// leaving a session that records nothing until someone notices. Stop
     /// synchronously in both cases: the tracks and meta.json have to land on
     /// disk before we lose the process, and a hop to the next run loop pass
-    /// can lose that race.
+    /// can lose that race. Hence `queue: nil`, which runs the block on the
+    /// posting thread - the main thread for both of these - instead of
+    /// scheduling it.
     private func installLifecycleObservers() {
         sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: nil
         ) { [weak self] _ in
+            guard Thread.isMainThread else { return }
             MainActor.assumeIsolated { self?.stopRecording() }
         }
         terminateObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+            forName: NSApplication.willTerminateNotification, object: nil, queue: nil
         ) { [weak self] _ in
+            guard Thread.isMainThread else { return }
             MainActor.assumeIsolated { self?.stopRecording() }
         }
     }
