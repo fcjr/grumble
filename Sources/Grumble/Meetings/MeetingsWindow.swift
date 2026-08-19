@@ -635,12 +635,16 @@ struct MeetingProgressView: View {
 /// retention.
 struct MeetingSettingsView: View {
     @State private var autoDetect = MeetingDetector.isEnabled
+    @State private var autoStop = MeetingDetector.stopsAutomatically
     @State private var retention = MeetingAudioRetention.current
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Toggle("Detect meetings automatically", isOn: $autoDetect)
                 .onChange(of: autoDetect) { MeetingDetector.isEnabled = autoDetect }
+
+            Toggle("Stop recording when the meeting ends", isOn: $autoStop)
+                .onChange(of: autoStop) { MeetingDetector.stopsAutomatically = autoStop }
 
             Picker("Keep raw audio", selection: $retention) {
                 ForEach(MeetingAudioRetention.allCases, id: \.self) { option in

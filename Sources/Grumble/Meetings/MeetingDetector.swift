@@ -51,11 +51,19 @@ final class MeetingDetector {
     ]
 
     private static let enabledKey = "meetingAutoDetect"
+    private static let autoStopKey = "meetingAutoStop"
     private static let policiesKey = "meetingAppPolicies"
 
     static var isEnabled: Bool {
         get { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
+    }
+
+    /// Whether releasing the mic ends the recording. Off means a recording
+    /// runs until someone stops it.
+    static var stopsAutomatically: Bool {
+        get { UserDefaults.standard.object(forKey: autoStopKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: autoStopKey) }
     }
 
     /// Effective policy for a bundle id: user override first, then the
@@ -173,10 +181,10 @@ final class MeetingDetector {
             if !activeTriggerIDs.isDisjoint(with: capturing) {
                 endTask?.cancel()
                 endTask = nil
-            } else if endTask == nil {
+            } else if endTask == nil, Self.stopsAutomatically {
                 endTask = Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: UInt64(Self.endDebounce * 1_000_000_000))
-                    guard let self, !Task.isCancelled else { return }
+                    guard let self, !Task.isCancelled, Self.stopsAutomatically else { return }
                     self.endTask = nil
                     // The debounce runs on notifications alone, and a missed
                     // one would end a live meeting. Confirm against the real
