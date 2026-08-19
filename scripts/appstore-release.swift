@@ -1,10 +1,12 @@
 // Drives App Store Connect after an upload: ensures the store version for
 // APP_VERSION exists, waits for build APP_BUILD to finish processing,
-// attaches it, sets "What's New" from RELEASE_NOTES, and with --submit
-// submits the version for review. Idempotent: safe to re-run.
+// attaches it, sets "What's New" from RELEASE_NOTES and the support URL,
+// and with --submit submits the version for review. Idempotent: safe to
+// re-run.
 //
 // Env: ASC_KEY_FILE (path to .p8), ASC_KEY_ID, ASC_ISSUER_ID,
-//      APP_VERSION, APP_BUILD, RELEASE_NOTES (optional)
+//      APP_VERSION, APP_BUILD, RELEASE_NOTES (optional),
+//      SUPPORT_URL (optional)
 
 import CryptoKit
 import Foundation
@@ -29,6 +31,9 @@ else {
     fail("ASC_KEY_FILE, ASC_KEY_ID, ASC_ISSUER_ID, APP_VERSION and APP_BUILD are required")
 }
 let releaseNotes = env("RELEASE_NOTES") ?? "Bug fixes and improvements."
+// App Review requires a support page with real help on it, not the marketing
+// home page (guideline 1.5).
+let supportURL = env("SUPPORT_URL") ?? "https://grumble.computer/support"
 let shouldSubmit = CommandLine.arguments.contains("--submit")
 
 // MARK: - JWT
@@ -187,12 +192,27 @@ func attach(buildID: String, to versionID: String) {
     print("attached build \(buildNumber) to \(version)")
 }
 
-func setReleaseNotes(versionID: String) {
+func setLocalizations(versionID: String) {
     for loc in items(api("GET", "/v1/appStoreVersions/\(versionID)/appStoreVersionLocalizations"))
     {
         guard let locID = loc["id"] as? String else { continue }
-        // The app's very first store version has no What's New field; the
-        // API rejects the write, which is fine to ignore.
+        // The support URL is patched on its own: the app's very first store
+        // version has no What's New field, and the API rejects that whole
+        // write, which would take the support URL down with it.
+        let supportResponse = api(
+            "PATCH", "/v1/appStoreVersionLocalizations/\(locID)",
+            body: [
+                "data": [
+                    "type": "appStoreVersionLocalizations", "id": locID,
+                    "attributes": ["supportUrl": supportURL],
+                ]
+            ], allowedErrors: [409, 422])
+        let supportStatus = supportResponse["_status"] as! Int
+        print(
+            supportStatus < 400
+                ? "set support URL to \(supportURL) (\(locID))"
+                : "support URL not writable, version is locked (\(locID))")
+
         let response = api(
             "PATCH", "/v1/appStoreVersionLocalizations/\(locID)",
             body: [
@@ -247,10 +267,16 @@ func submit(versionID: String) {
             submissionItems(id).contains(versionID)
         else { continue }
         let state = (submission["attributes"] as? [String: Any])?["state"] as? String ?? "unknown"
-        if state == "READY_FOR_REVIEW" {
+        switch state {
+        case "READY_FOR_REVIEW":
             print("version \(version) already in submission \(id), sending it")
             send(id)
-        } else {
+        case "UNRESOLVED_ISSUES":
+            // App Review rejected this version and still holds it. Nothing can
+            // be resubmitted until the submission is answered or canceled, so
+            // don't let the release job report success.
+            fail("version \(version) is held by rejected submission \(id) - resolve it in App Store Connect")
+        default:
             print("version \(version) already submitted in \(id) (\(state))")
         }
         return
@@ -299,7 +325,7 @@ func submit(versionID: String) {
 let versionID = ensureVersion()
 let buildID = waitForBuild()
 attach(buildID: buildID, to: versionID)
-setReleaseNotes(versionID: versionID)
+setLocalizations(versionID: versionID)
 if shouldSubmit {
     submit(versionID: versionID)
 } else {
