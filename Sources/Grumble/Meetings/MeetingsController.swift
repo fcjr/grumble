@@ -155,8 +155,13 @@ final class MeetingsController: NSObject {
 
     func startRecording(sourceBundleID: String?) {
         guard state == .idle, let store else { return }
+        // Held outside the do block so a start that throws still has
+        // something to clean up: self.session isn't assigned until capture is
+        // running, and the folder exists from init onwards.
+        var created: MeetingSession?
         do {
             let session = try MeetingSession(sourceBundleID: sourceBundleID)
+            created = session
             try session.start()
             self.session = session
             try store.createMeeting(
@@ -168,7 +173,7 @@ final class MeetingsController: NSObject {
             clearPendingStop()
             state = .recording(startedAt: session.startedAt, sourceBundleID: sourceBundleID)
         } catch {
-            session?.discard()
+            created?.discard()
             session = nil
             showAlert("Couldn't start the meeting recording: \(error.localizedDescription)")
         }
