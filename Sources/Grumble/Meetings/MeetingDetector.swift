@@ -84,13 +84,16 @@ final class MeetingDetector {
     private var listenedProcesses: Set<AudioObjectID> = []
     private var startTask: Task<Void, Never>?
     private var endTask: Task<Void, Never>?
-    /// The bundle id whose capture started the current meeting; sticky until
-    /// the end debounce fires so brief mute/unmute cycles don't split one
-    /// meeting into many.
+    /// The bundle id whose capture started the current meeting; set by the
+    /// controller through `adoptMeeting` and sticky until the end debounce
+    /// fires, so brief mute/unmute cycles don't split one meeting into many.
     private(set) var activeMeetingBundleID: String?
     /// Bundle ids already asked about this capture session, so one "ask"
     /// notification doesn't repeat every property change.
     private var asked: Set<String> = []
+    /// Bundle ids that must not trigger another start until they release the
+    /// mic, because a start attempt for them didn't produce a recording.
+    private var suppressed: Set<String> = []
 
     func start() {
         guard listenerBlock == nil else { return }
@@ -147,6 +150,7 @@ final class MeetingDetector {
         }
 
         asked.formIntersection(capturing)
+        suppressed.formIntersection(capturing)
 
         if let active = activeMeetingBundleID {
             if capturing.contains(active) {
@@ -166,8 +170,12 @@ final class MeetingDetector {
 
         guard Self.isEnabled else { return }
 
-        let autoCandidate = capturing.first { Self.policy(for: $0) == .auto }
-        let askCandidate = capturing.first { Self.policy(for: $0) == .ask && !asked.contains($0) }
+        let autoCandidate = capturing.first {
+            Self.policy(for: $0) == .auto && !suppressed.contains($0)
+        }
+        let askCandidate = capturing.first {
+            Self.policy(for: $0) == .ask && !asked.contains($0) && !suppressed.contains($0)
+        }
         guard autoCandidate != nil || askCandidate != nil else {
             startTask?.cancel()
             startTask = nil
@@ -182,11 +190,17 @@ final class MeetingDetector {
 
             // Re-check after the debounce: the capture must still be live.
             let stillCapturing = Self.currentlyCapturingBundleIDs(excludingPID: ownPID)
-            if let auto = stillCapturing.first(where: { Self.policy(for: $0) == .auto }) {
-                self.activeMeetingBundleID = auto
+            if let auto = stillCapturing.first(where: {
+                Self.policy(for: $0) == .auto && !self.suppressed.contains($0)
+            }) {
                 self.onAutoStart?(auto)
+                // The controller adopts the meeting once the recording is
+                // really running. If it isn't - the recorder failed to start -
+                // don't retry this app until it releases the mic.
+                if self.activeMeetingBundleID == nil { self.suppressed.insert(auto) }
             } else if let ask = stillCapturing.first(where: {
                 Self.policy(for: $0) == .ask && !self.asked.contains($0)
+                    && !self.suppressed.contains($0)
             }) {
                 self.asked.insert(ask)
                 self.onAsk?(ask)
@@ -194,9 +208,8 @@ final class MeetingDetector {
         }
     }
 
-    /// Called by the controller when the user accepts an "ask" prompt or
-    /// starts recording manually while an app is capturing, so end detection
-    /// tracks that app.
+    /// Called by the controller whenever a recording starts or stops, so end
+    /// detection tracks the app hosting the meeting. Passing nil clears it.
     func adoptMeeting(bundleID: String?) {
         activeMeetingBundleID = bundleID
         endTask?.cancel()

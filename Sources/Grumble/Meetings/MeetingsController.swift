@@ -51,8 +51,18 @@ final class MeetingsController: NSObject {
         center.setNotificationCategories([category])
 
         detector.onAutoStart = { [weak self] bundleID in
-            guard let self, self.state == .idle else { return }
+            guard let self else { return }
+            guard self.state == .idle else {
+                // Already recording, most likely started by hand before the
+                // meeting app opened the mic: adopt it so end detection has
+                // something to track.
+                if self.detector.activeMeetingBundleID == nil {
+                    self.detector.adoptMeeting(bundleID: bundleID)
+                }
+                return
+            }
             self.startRecording(sourceBundleID: bundleID)
+            guard self.isRecording else { return }
             self.notify(
                 title: "Recording meeting",
                 body: "Grumble is recording \(Self.appName(for: bundleID)). "
