@@ -5,7 +5,7 @@ import Foundation
 /// process-object API (macOS 14.4+) and decides when a meeting starts and
 /// ends. A known meeting app capturing the mic for 3 continuous seconds is a
 /// meeting; the meeting is over when every app that joined it has released
-/// the mic for 15 seconds.
+/// the mic for 8 seconds.
 /// Browsers capturing the mic imply a web meeting (Google Meet has no native
 /// app) but only ever "ask" - a mic-using tab could be anything.
 @MainActor
@@ -22,7 +22,7 @@ final class MeetingDetector {
     var onMeetingEnd: (() -> Void)?
 
     private static let startDebounce: TimeInterval = 3
-    private static let endDebounce: TimeInterval = 15
+    private static let endDebounce: TimeInterval = 8
 
     /// Native meeting apps that default to auto-record.
     private static let meetingApps: Set<String> = [
@@ -173,6 +173,15 @@ final class MeetingDetector {
                     try? await Task.sleep(nanoseconds: UInt64(Self.endDebounce * 1_000_000_000))
                     guard let self, !Task.isCancelled else { return }
                     self.endTask = nil
+                    // The debounce runs on notifications alone, and a missed
+                    // one would end a live meeting. Confirm against the real
+                    // state before stopping anything.
+                    let capturing = Self.currentlyCapturingBundleIDs(
+                        excludingPID: ProcessInfo.processInfo.processIdentifier)
+                    guard self.activeTriggerIDs.isDisjoint(with: capturing) else {
+                        self.refresh()
+                        return
+                    }
                     self.activeTriggerIDs = []
                     self.onMeetingEnd?()
                 }
