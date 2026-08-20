@@ -70,6 +70,18 @@ final class MeetingsViewModel: ObservableObject {
         }
     }
     @Published var segments: [MeetingSegment] = []
+    /// Whether the selected meeting still has both raw tracks on disk, so the
+    /// audio export button knows there is something to write out.
+    @Published private(set) var selectedHasAudio = false
+    /// Mirrors the controller so the window's record button tracks recordings
+    /// started from the menu bar or by the detector too.
+    @Published private(set) var isRecording = false
+    /// The transcript line the playhead is inside. The playhead itself moves
+    /// four times a second; republishing that would redraw every row each
+    /// tick, where this changes only when the spoken line does.
+    @Published private(set) var activeSegmentID: Int64?
+    @Published private(set) var isExportingAudio = false
+    @Published var audioExportError: String?
 
     /// Speaker id to position in `speakers`. Every transcript row looks up its
     /// speaker twice to draw, so a linear scan per row shows up on long
@@ -80,10 +92,7 @@ final class MeetingsViewModel: ObservableObject {
     weak var controller: MeetingsController?
     private var changeObserver: NSObjectProtocol?
     let playback = MeetingPlayback()
-    /// `playback` is its own ObservableObject, so views watching the model
-    /// alone never hear about it. Republish its changes or controls that
-    /// depend on player state, like the pause button, go stale.
-    private var playbackObserver: AnyCancellable?
+    private var positionObserver: AnyCancellable?
 
     init(store: MeetingStore, controller: MeetingsController) {
         self.store = store
@@ -93,8 +102,8 @@ final class MeetingsViewModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
-        playbackObserver = playback.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
+        positionObserver = playback.$positionMs.sink { [weak self] ms in
+            self?.updateActiveSegment(at: ms)
         }
         refresh()
     }
@@ -110,6 +119,7 @@ final class MeetingsViewModel: ObservableObject {
     }
 
     func refresh() {
+        isRecording = controller?.isRecording ?? false
         meetings = (try? store.meetings(matching: query)) ?? []
         if selectedID == nil || !meetings.contains(where: { $0.id == selectedID }) {
             selectedID = meetings.first?.id
@@ -121,13 +131,36 @@ final class MeetingsViewModel: ObservableObject {
         guard let selectedID else {
             speakers = []
             segments = []
+            selectedHasAudio = false
             playback.unload()
             return
         }
         speakers = (try? store.speakers(meetingId: selectedID)) ?? []
         segments = (try? store.segments(meetingId: selectedID)) ?? []
         if let meeting = selected {
+            selectedHasAudio = Self.hasAudio(meeting)
             playback.load(meeting: meeting)
+        }
+    }
+
+    /// Nothing is highlighted until playback has moved off the start, so a
+    /// meeting that is merely selected doesn't sit there with its first line
+    /// lit up.
+    private func updateActiveSegment(at positionMs: Int) {
+        var id: Int64?
+        if playback.isPlaying || positionMs > 0 {
+            id = segments.last { $0.startMs <= positionMs && positionMs < $0.endMs }?.id
+        }
+        if id != activeSegmentID { activeSegmentID = id }
+    }
+
+    /// A meeting still being recorded has half-written tracks, so it does not
+    /// count as exportable yet.
+    private static func hasAudio(_ meeting: Meeting) -> Bool {
+        guard meeting.state != .recording else { return false }
+        let dir = MeetingSession.meetingsRoot().appendingPathComponent(meeting.audioDir)
+        return ["mic.caf", "system.caf"].contains {
+            FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path)
         }
     }
 
@@ -177,6 +210,35 @@ final class MeetingsViewModel: ObservableObject {
         try? markdown.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    /// Write the meeting out as one mixed m4a, the same stitched timeline the
+    /// player uses, so the file matches what playback sounds like.
+    func exportAudio(_ meeting: Meeting) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.mpeg4Audio]
+        panel.nameFieldStringValue = meeting.displayTitle + ".m4a"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        isExportingAudio = true
+        let audioDir = meeting.audioDir
+        Task {
+            let error = await MeetingPlayback.exportMix(audioDir: audioDir, to: url)
+            isExportingAudio = false
+            audioExportError = error
+        }
+    }
+
+    /// Start or stop a recording from the window. A recording started here
+    /// gets selected, so the meeting being recorded is what is on screen.
+    func toggleRecording() {
+        guard let controller else { return }
+        let wasRecording = controller.isRecording
+        controller.toggleRecording()
+        refresh()
+        if !wasRecording, controller.isRecording, let newest = meetings.first?.id {
+            selectedID = newest
+            loadDetail()
+        }
+    }
+
     func retry(_ meeting: Meeting) {
         try? store.setState(audioDir: meeting.audioDir, .queued)
         let pipeline = controller?.pipeline
@@ -191,11 +253,21 @@ final class MeetingsViewModel: ObservableObject {
 /// their recorded offsets.
 @MainActor
 final class MeetingPlayback: ObservableObject {
-    @Published private(set) var player: AVPlayer?
-    private var loadedDir: String?
+    @Published private(set) var isPlaying = false
+    /// Where the playhead is, and how long the mix runs, both in milliseconds.
+    /// They are tracked even before the player exists so the transport bar can
+    /// show a position and accept a scrub on a meeting that has never played.
+    @Published private(set) var positionMs = 0
+    @Published private(set) var durationMs = 0
+    private var player: AVPlayer?
     /// The showing meeting, whose audio has not been parsed yet.
     private var pendingDir: String?
     private var isPreparing = false
+    private var timeObserver: Any?
+    private var endObserver: NSObjectProtocol?
+    /// Set while a drag is in flight: the periodic observer would otherwise
+    /// keep yanking the playhead back to where the audio still is.
+    private var isScrubbing = false
 
     /// Note which meeting is showing without touching its audio. Building the
     /// composition has to parse both track files, which is far too slow to do
@@ -205,12 +277,17 @@ final class MeetingPlayback: ObservableObject {
         guard meeting.audioDir != pendingDir else { return }
         unload()
         pendingDir = meeting.audioDir
+        // The recorded duration stands in until the composition is built and
+        // reports the real one.
+        durationMs = meeting.durationSeconds * 1000
     }
 
     func playFrom(ms: Int) {
+        positionMs = ms
         if let player {
             player.seek(to: CMTime(value: CMTimeValue(ms), timescale: 1000))
             player.play()
+            isPlaying = true
             return
         }
         guard let dir = pendingDir, !isPreparing else { return }
@@ -221,15 +298,48 @@ final class MeetingPlayback: ObservableObject {
             // The selection may have moved on while the audio was loading.
             guard pendingDir == dir else { return }
             player = prepared
-            loadedDir = dir
             guard let prepared else { return }
+            observe(prepared)
+            if let item = prepared.currentItem,
+                let duration = try? await item.asset.load(.duration), duration.isNumeric
+            {
+                durationMs = Int(duration.seconds * 1000)
+            }
             _ = await prepared.seek(to: CMTime(value: CMTimeValue(ms), timescale: 1000))
             prepared.play()
+            isPlaying = true
         }
+    }
+
+    func togglePlayPause() {
+        if isPlaying {
+            pause()
+        } else {
+            // Play on a finished mix starts over rather than replaying the
+            // last instant of it.
+            playFrom(ms: positionMs >= durationMs ? 0 : positionMs)
+        }
+    }
+
+    /// Drag the playhead. Nothing reaches the player until the drag ends, and
+    /// a scrub before the first play just moves `positionMs`, which is where
+    /// the next play begins.
+    func beginScrub() {
+        isScrubbing = true
+    }
+
+    func scrub(toMs ms: Int) {
+        positionMs = ms
+    }
+
+    func endScrub() {
+        isScrubbing = false
+        player?.seek(to: CMTime(value: CMTimeValue(positionMs), timescale: 1000))
     }
 
     func pause() {
         player?.pause()
+        isPlaying = false
     }
 
     /// Stop and release the player but keep track of which meeting is
@@ -237,19 +347,55 @@ final class MeetingPlayback: ObservableObject {
     /// needing the selection to change first.
     func stop() {
         player?.pause()
+        if let timeObserver {
+            player?.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
         player = nil
-        loadedDir = nil
+        isPlaying = false
     }
 
     func unload() {
         stop()
         pendingDir = nil
+        positionMs = 0
+        durationMs = 0
+    }
+
+    /// Follow the playhead for the transport bar, and reset it when the mix
+    /// runs out so the play button does not sit there claiming to be playing.
+    private func observe(_ player: AVPlayer) {
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(value: 1, timescale: 4), queue: .main
+        ) { [weak self] time in
+            MainActor.assumeIsolated {
+                guard let self, !self.isScrubbing else { return }
+                self.positionMs = max(0, Int(time.seconds * 1000))
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.isPlaying = false
+                self?.positionMs = self?.durationMs ?? 0
+            }
+        }
+    }
+
+    private static func makePlayer(audioDir: String) async -> AVPlayer? {
+        guard let composition = await mixedComposition(audioDir: audioDir) else { return nil }
+        return AVPlayer(playerItem: AVPlayerItem(asset: composition))
     }
 
     /// Stitches the mic and system tracks back onto one timeline. The awaits
     /// are what matter: `loadTracks` and `load(.duration)` demux the file on
     /// their own queues, so the main thread stays free while they run.
-    private static func makePlayer(audioDir: String) async -> AVPlayer? {
+    private static func mixedComposition(audioDir: String) async -> AVComposition? {
         let dir = MeetingSession.meetingsRoot().appendingPathComponent(audioDir)
         let meta = MeetingSessionMeta.load(from: dir)
         let composition = AVMutableComposition()
@@ -270,7 +416,41 @@ final class MeetingPlayback: ObservableObject {
             )
         }
         guard !composition.tracks.isEmpty else { return nil }
-        return AVPlayer(playerItem: AVPlayerItem(asset: composition))
+        return composition
+    }
+
+    /// Write the mix out as an m4a. Returns nil on success, or a message to
+    /// show when it fails.
+    static func exportMix(audioDir: String, to url: URL) async -> String? {
+        guard let composition = await mixedComposition(audioDir: audioDir) else {
+            return "This meeting has no audio left on this Mac."
+        }
+        guard
+            let session = AVAssetExportSession(
+                asset: composition, presetName: AVAssetExportPresetAppleM4A)
+        else {
+            return "Could not start the export."
+        }
+        // The save panel has already taken the user's overwrite confirmation,
+        // but the export refuses to write over an existing file itself.
+        try? FileManager.default.removeItem(at: url)
+        if #available(macOS 15.0, *) {
+            do {
+                try await session.export(to: url, as: .m4a)
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
+        }
+        session.outputURL = url
+        session.outputFileType = .m4a
+        await withCheckedContinuation { continuation in
+            session.exportAsynchronously { continuation.resume() }
+        }
+        guard session.status == .completed else {
+            return session.error?.localizedDescription ?? "The export failed."
+        }
+        return nil
     }
 }
 
@@ -296,6 +476,21 @@ struct MeetingsView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
+                    model.toggleRecording()
+                } label: {
+                    Label(
+                        model.isRecording ? "Stop Recording" : "Record Meeting",
+                        systemImage: model.isRecording ? "stop.fill" : "record.circle"
+                    )
+                    .foregroundStyle(model.isRecording ? Color.red : Color.primary)
+                }
+                .help(
+                    model.isRecording
+                        ? "Stop recording and start transcribing"
+                        : "Start recording a meeting")
+            }
+            ToolbarItem(placement: .navigation) {
+                Button {
                     showingSettings = true
                 } label: {
                     Label("Meeting Settings", systemImage: "gearshape")
@@ -303,6 +498,7 @@ struct MeetingsView: View {
                 .popover(isPresented: $showingSettings) {
                     MeetingSettingsView()
                 }
+                .help("Meeting settings")
             }
         }
         .onAppear { model.refresh() }
@@ -327,12 +523,16 @@ struct MeetingsView: View {
                 .font(.title3)
             Text(
                 "Grumble records automatically when a meeting app uses your microphone, "
-                    + "or start one from the menu bar."
+                    + "or start one yourself."
             )
             .font(.callout)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: 360)
+            Button(model.isRecording ? "Stop Recording" : "Record a Meeting") {
+                model.toggleRecording()
+            }
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -391,6 +591,59 @@ struct MeetingRow: View {
     }
 }
 
+/// Pinned above the transcript so the playhead stays reachable from anywhere
+/// in a long one. It observes the player directly: the position ticks four
+/// times a second, and nothing else should redraw for that.
+struct TransportBar: View {
+    @ObservedObject var playback: MeetingPlayback
+
+    var body: some View {
+        let total = max(playback.durationMs, 1)
+        return HStack(spacing: 12) {
+            Button {
+                playback.togglePlayPause()
+            } label: {
+                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                    .frame(width: 14)
+            }
+            .buttonStyle(.borderless)
+            .help(playback.isPlaying ? "Pause" : "Play")
+            stamp(playback.positionMs, of: total)
+            Slider(
+                value: Binding(
+                    get: { Double(playback.positionMs) },
+                    set: { playback.scrub(toMs: Int($0)) }
+                ),
+                in: 0...Double(total)
+            ) { editing in
+                if editing {
+                    playback.beginScrub()
+                } else {
+                    playback.endScrub()
+                }
+            }
+            .help("Scrub through the recording")
+            stamp(total, of: total)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    /// Both readouts are formatted against the total, so the elapsed side
+    /// doesn't switch shape (and resize the slider) on the way past an hour.
+    private func stamp(_ ms: Int, of totalMs: Int) -> some View {
+        let seconds = max(0, ms / 1000)
+        let text =
+            totalMs >= 3_600_000
+            ? String(format: "%d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
+            : String(format: "%d:%02d", seconds / 60, seconds % 60)
+        return Text(text)
+            .font(.callout.monospacedDigit())
+            .foregroundStyle(.secondary)
+    }
+}
+
 struct MeetingDetailView: View {
     @ObservedObject var model: MeetingsViewModel
     let meeting: Meeting
@@ -398,6 +651,72 @@ struct MeetingDetailView: View {
     @State private var confirmingDelete = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            if model.selectedHasAudio {
+                TransportBar(playback: model.playback)
+                Divider()
+            }
+            detail
+        }
+        .toolbar {
+            ToolbarItemGroup {
+                Button {
+                    model.copyTranscript(meeting)
+                } label: {
+                    Label("Copy Transcript", systemImage: "doc.on.doc")
+                }
+                .disabled(model.segments.isEmpty)
+                .help("Copy the transcript as markdown")
+                Button {
+                    model.exportMarkdown(meeting)
+                } label: {
+                    Label("Export Markdown", systemImage: "square.and.arrow.up")
+                }
+                .disabled(model.segments.isEmpty)
+                .help("Save the transcript as a markdown file")
+                Button {
+                    model.exportAudio(meeting)
+                } label: {
+                    if model.isExportingAudio {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Export Audio", systemImage: "waveform")
+                    }
+                }
+                .disabled(!model.selectedHasAudio || model.isExportingAudio)
+                .help(model.isExportingAudio ? "Exporting audio" : "Save the recording as an m4a file")
+                Button(role: .destructive) {
+                    confirmingDelete = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .help("Delete this meeting and its recording")
+            }
+        }
+        .confirmationDialog(
+            "Delete this meeting?", isPresented: $confirmingDelete
+        ) {
+            Button("Delete Meeting and Audio", role: .destructive) {
+                model.delete(meeting)
+            }
+        } message: {
+            Text("The recording, transcript, and summary are removed from this Mac.")
+        }
+        .alert(
+            "Audio Export Failed",
+            isPresented: Binding(
+                get: { model.audioExportError != nil },
+                set: { if !$0 { model.audioExportError = nil } })
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(model.audioExportError ?? "")
+        }
+        .onAppear { editedTitle = meeting.title ?? "" }
+        .onChange(of: meeting.id) { editedTitle = meeting.title ?? "" }
+    }
+
+    private var detail: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
@@ -415,38 +734,6 @@ struct MeetingDetailView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    model.copyTranscript(meeting)
-                } label: {
-                    Label("Copy Transcript", systemImage: "doc.on.doc")
-                }
-                .disabled(model.segments.isEmpty)
-                Button {
-                    model.exportMarkdown(meeting)
-                } label: {
-                    Label("Export Markdown", systemImage: "square.and.arrow.up")
-                }
-                .disabled(model.segments.isEmpty)
-                Button(role: .destructive) {
-                    confirmingDelete = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-            }
-        }
-        .confirmationDialog(
-            "Delete this meeting?", isPresented: $confirmingDelete
-        ) {
-            Button("Delete Meeting and Audio", role: .destructive) {
-                model.delete(meeting)
-            }
-        } message: {
-            Text("The recording, transcript, and summary are removed from this Mac.")
-        }
-        .onAppear { editedTitle = meeting.title ?? "" }
-        .onChange(of: meeting.id) { editedTitle = meeting.title ?? "" }
     }
 
     private var header: some View {
@@ -511,19 +798,8 @@ struct MeetingDetailView: View {
 
     private var transcript: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Transcript")
-                    .font(.headline)
-                Spacer()
-                if model.playback.player != nil {
-                    Button {
-                        model.playback.pause()
-                    } label: {
-                        Label("Pause", systemImage: "pause.fill")
-                    }
-                    .controlSize(.small)
-                }
-            }
+            Text("Transcript")
+                .font(.headline)
             if model.segments.isEmpty {
                 if meeting.state == .queued || meeting.state == .transcribing
                     || meeting.state == .summarizing
@@ -816,6 +1092,10 @@ struct SegmentRow: View {
     @ObservedObject var model: MeetingsViewModel
     let segment: MeetingSegment
 
+    private var isSpeaking: Bool {
+        segment.id != nil && segment.id == model.activeSegmentID
+    }
+
     var body: some View {
         Button {
             model.playback.playFrom(ms: segment.startMs)
@@ -836,6 +1116,15 @@ struct SegmentRow: View {
             }
         }
         .buttonStyle(.plain)
+        // Negative padding so the highlight is wider than the text without
+        // moving the text itself as it comes and goes.
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isSpeaking ? Color.accentColor.opacity(0.18) : .clear)
+                .padding(.horizontal, -8)
+                .padding(.vertical, -4)
+        )
+        .animation(.easeInOut(duration: 0.15), value: isSpeaking)
         .help("Click to play from here")
     }
 

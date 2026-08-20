@@ -25,12 +25,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var iconTimer: Timer?
     private var iconPhase: CGFloat = 0
     private var loginItem: NSMenuItem!
+    private var dockIconItem: NSMenuItem!
     private var modelMenu: NSMenu!
     private var micMenu: NSMenu!
     private lazy var overlay = OverlayController()
     private let permissions = PermissionsController()
     private let about = AboutController()
     private let hotKeyRecorder = HotKeyRecorder()
+
+    /// Off by default: Grumble lives in the menu bar, not the Dock.
+    static var showsDockIcon: Bool {
+        get { UserDefaults.standard.bool(forKey: "showDockIcon") }
+        set { UserDefaults.standard.set(newValue, forKey: "showDockIcon") }
+    }
     #if !APPSTORE
         // Sparkle can't replace a bundle in the read-only Nix store (and nix-darwin
         // copies into "Nix Apps" get overwritten on the next rebuild), so Nix owns
@@ -57,6 +64,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     ]
 
     private var hotKeyRegistered = true
+
+    /// Clicking the Dock icon has to lead somewhere, and the menu bar item is
+    /// the only other way in.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            openMeetings()
+        }
+        return true
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Utility mode for scripted checks of the system-audio TCC grant
@@ -180,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.menu = buildMenu()
+        applyDockIconSetting()
 
         dictation.onStateChange = { [weak self] state in
             self?.updateUI(for: state)
@@ -344,6 +361,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItem.target = self
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(loginItem)
+
+        dockIconItem = NSMenuItem(
+            title: "Show Icon in Dock", action: #selector(toggleDockIcon), keyEquivalent: "")
+        dockIconItem.target = self
+        dockIconItem.state = Self.showsDockIcon ? .on : .off
+        menu.addItem(dockIconItem)
 
         let setupItem = NSMenuItem(
             title: "Setup\u{2026}", action: #selector(openSetup), keyEquivalent: "")
@@ -562,6 +585,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSLog("Grumble: failed to toggle launch at login: \(error)")
         }
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    }
+
+    @objc private func toggleDockIcon() {
+        Self.showsDockIcon.toggle()
+        applyDockIconSetting()
+        dockIconItem.state = Self.showsDockIcon ? .on : .off
+    }
+
+    /// Grumble runs as an LSUIElement app, so the Dock icon is opt-in. The
+    /// regular policy also gives the app its own menu bar, which an accessory
+    /// app never needed, so build one the first time it is shown.
+    private func applyDockIconSetting() {
+        guard Self.showsDockIcon else {
+            NSApp.setActivationPolicy(.accessory)
+            return
+        }
+        if NSApp.mainMenu == nil {
+            NSApp.mainMenu = buildMainMenu()
+        }
+        NSApp.setActivationPolicy(.regular)
+    }
+
+    /// The bare minimum a Dock app needs: an app menu that can quit, and an
+    /// Edit menu so the standard shortcuts work in the Meetings window.
+    private func buildMainMenu() -> NSMenu {
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Grumble", action: #selector(openAbout), keyEquivalent: "")
+            .target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(
+            withTitle: "Meetings\u{2026}", action: #selector(openMeetings), keyEquivalent: ""
+        ).target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(
+            withTitle: "Hide Grumble", action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h")
+        appMenu.addItem(
+            withTitle: "Quit Grumble", action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q")
+
+        // No targets: these dispatch down the responder chain to whichever
+        // text field or text view is focused.
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector("undo:"), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector("redo:"), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(
+            withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+        let editItem = NSMenuItem()
+        editItem.submenu = editMenu
+        main.addItem(editItem)
+        return main
     }
 
     @objc private func changeHotKey() {

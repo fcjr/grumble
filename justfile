@@ -81,9 +81,11 @@ generate:
 build: generate
     xcodebuild -project Grumble.xcodeproj -scheme Grumble -quiet {{ plugin_flags }} build
 
-# Build and launch the app
+# Build and launch the app. Any running copy is quit first: it holds the same
+# database and hotkey, and would just be reactivated instead of the new build.
 run: build
-    open "$(xcodebuild -project Grumble.xcodeproj -scheme Grumble \
+    -pkill -x Grumble
+    open -n "$(xcodebuild -project Grumble.xcodeproj -scheme Grumble \
         -showBuildSettings build 2>/dev/null \
         | awk '/ BUILT_PRODUCTS_DIR/ {print $3}')/Grumble.app"
 
